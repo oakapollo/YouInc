@@ -1,0 +1,265 @@
+.page {
+  @apply min-h-screen bg-[#070A12] text-white relative overflow-x-hidden;
+}
+
+.glowA {
+  @apply pointer-events-none absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full blur-[90px];
+  background: rgba(217, 70, 239, 0.18);
+}
+
+.glowB {
+  @apply pointer-events-none absolute top-24 left-12 h-[420px] w-[420px] rounded-full blur-[90px];
+  background: rgba(34, 211, 238, 0.12);
+}
+
+.glowC {
+  @apply pointer-events-none absolute -bottom-24 right-0 h-[520px] w-[520px] rounded-full blur-[110px];
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.shell {
+  @apply relative mx-auto max-w-5xl px-5 py-12;
+}
+
+.header {
+  @apply flex items-center justify-between gap-4;
+}
+
+.brand {
+  @apply flex items-center gap-3;
+}
+
+.logo {
+  @apply h-10 w-10 rounded-2xl ring-1 ring-white/15 bg-white/10 backdrop-blur;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+.brandText {
+  @apply leading-tight;
+}
+
+.title {
+  @apply text-base font-semibold tracking-wide;
+}
+
+.subTitle {
+  @apply text-xs text-white/55;
+}
+
+.addBtn {
+  @apply inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold text-black bg-white hover:opacity-90 transition;
+}
+
+.addPlus {
+  @apply text-lg leading-none;
+}
+
+.tabs {
+  @apply mt-8 grid grid-cols-2 gap-2 sm:grid-cols-4;
+}
+
+.tab {
+  @apply rounded-2xl px-4 py-3 text-sm text-white/75 bg-white/5 ring-1 ring-white/10 hover:bg-white/10 transition;
+}
+
+.tabActive {
+  @apply bg-white/10 text-white ring-white/20;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+
+/* Panel (tab content) */
+.panel {
+  @apply mt-6 rounded-3xl bg-white/5 ring-1 ring-white/10 p-4 sm:p-6;
+}
+
+/* Scroll the list so “added stuff” doesn’t push into chart space */
+.list {
+  @apply space-y-3;
+  max-height: 380px; /* tweak if you want more/less */
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.list::-webkit-scrollbar {
+  width: 8px;
+}
+.list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+.list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+}
+.list::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.card {
+  @apply rounded-2xl bg-black/25 ring-1 ring-white/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
+}
+
+.cardMain {
+  @apply min-w-0;
+}
+
+.cardTitle {
+  @apply text-base font-semibold truncate;
+}
+
+.metaRow {
+  @apply mt-2 flex flex-wrap items-center gap-2;
+}
+
+.metaPill {
+  @apply inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-xs text-white/70 ring-1 ring-white/10;
+}
+
+.metaNote {
+  @apply text-xs text-white/55 truncate;
+}
+
+.cardActions {
+  @apply flex flex-wrap items-center gap-2 sm:justify-end;
+}
+
+.delta {
+  @apply ml-2 text-[11px] font-semibold opacity-80;
+}
+
+.actionPrimary {
+  @apply rounded-xl px-3 py-2 text-sm bg-emerald-400/15 text-emerald-200 ring-1 ring-emerald-300/20 hover:bg-emerald-400/20 transition;
+}
+
+.actionWarn {
+  @apply rounded-xl px-3 py-2 text-sm bg-amber-400/15 text-amber-200 ring-1 ring-amber-300/20 hover:bg-amber-400/20 transition;
+}
+
+.actionDanger {
+  @apply rounded-xl px-3 py-2 text-sm bg-rose-400/15 text-rose-200 ring-1 ring-rose-300/20 hover:bg-rose-400/20 transition;
+}
+
+.iconBtn {
+  @apply rounded-xl px-3 py-2 text-sm bg-white/5 text-white/70 ring-1 ring-white/10 hover:bg-white/10 transition;
+}
+
+.empty {
+  @apply rounded-2xl bg-black/20 ring-1 ring-white/10 p-10 text-center;
+}
+
+.emptyIcon {
+  @apply text-2xl text-white/40;
+}
+
+.emptyText {
+  @apply mt-2 text-sm text-white/60;
+}
+
+/* Modal */
+.modalOverlay {
+  @apply fixed inset-0 z-50 flex items-center justify-center p-4;
+  background: rgba(0, 0, 0, 0.65);
+}
+
+.modal {
+  @apply w-full max-w-xl rounded-3xl bg-[#0B1020] ring-1 ring-white/10 overflow-hidden;
+  box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
+}
+
+.modalHeader {
+  @apply flex items-center justify-between px-6 py-5 border-b border-white/10;
+}
+
+.modalTitle {
+  @apply text-base font-semibold;
+}
+
+.modalBody {
+  @apply px-6 py-5;
+}
+
+.modalFooter {
+  @apply flex items-center justify-end gap-2 px-6 py-5 border-t border-white/10;
+}
+
+.form {
+  @apply space-y-4;
+}
+
+.label {
+  @apply block text-xs text-white/60;
+}
+
+.input {
+  @apply mt-2 w-full rounded-2xl bg-black/30 px-4 py-3 text-sm text-white ring-1 ring-white/10 outline-none focus:ring-2 focus:ring-cyan-300/30;
+}
+
+.row2 {
+  @apply grid gap-4 sm:grid-cols-2;
+}
+
+.dowRow {
+  @apply flex flex-wrap gap-2 pt-1;
+}
+
+.dowPill {
+  @apply rounded-full px-3 py-2 text-xs bg-white/5 text-white/70 ring-1 ring-white/10 hover:bg-white/10 transition;
+}
+
+.dowPillOn {
+  @apply bg-cyan-400/15 text-cyan-200 ring-cyan-300/20;
+}
+
+.helperBox {
+  @apply rounded-2xl bg-black/25 ring-1 ring-white/10 p-4;
+}
+
+.helperTitle {
+  @apply text-sm font-semibold text-white/85;
+}
+
+.helperText {
+  @apply mt-1 text-xs text-white/55;
+}
+
+.ghostBtn {
+  @apply rounded-2xl px-4 py-2 text-sm bg-white/5 text-white/75 ring-1 ring-white/10 hover:bg-white/10 transition;
+}
+
+.primaryBtn {
+  @apply rounded-2xl px-4 py-2 text-sm font-semibold text-black bg-white hover:opacity-90 transition disabled:opacity-40 disabled:cursor-not-allowed;
+}
+
+/* Chart area BELOW the panel */
+.topStats {
+  @apply mt-10 mb-4 rounded-3xl bg-white/5 ring-1 ring-white/10 p-4 sm:p-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
+}
+
+.statBlock {
+  @apply flex items-baseline justify-between sm:justify-start sm:gap-3;
+}
+
+.statLabel {
+  @apply text-xs text-white/55;
+}
+
+.statValue {
+  @apply text-lg font-semibold;
+}
+
+.tfRow {
+  @apply flex items-center gap-2 justify-end;
+}
+
+.tfBtn {
+  @apply rounded-xl px-3 py-2 text-xs bg-white/5 text-white/70 ring-1 ring-white/10 hover:bg-white/10 transition;
+}
+
+.tfBtnOn {
+  @apply bg-cyan-400/15 text-cyan-200 ring-cyan-300/20;
+}
+
+.chartWrap {
+  @apply rounded-3xl bg-black/25 ring-1 ring-white/10 p-3 sm:p-4;
+  margin-bottom: 28px;
+}
