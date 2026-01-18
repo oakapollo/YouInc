@@ -1,5 +1,6 @@
 "use client";
 
+import { applyTaxes, isMarketOpen, type DeltaKind } from "./rules";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./youinc.module.css";
 
@@ -82,7 +83,7 @@ function buildCandles(startCapUC: number, txAsc: Tx[], bucketMs: number, lookbac
     bucketMap.set(b, arr);
   }
 
-  const toPrice = (uc: number) => uc / 1000;
+  const toPrice = (uc: number) => uc / 10000;
 
   const candles: Candle[] = [];
   let cap = capAtStart;
@@ -118,8 +119,12 @@ export default function YouIncPage() {
   const [tab, setTab] = useState<TabKey>("goals");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tf, setTf] = useState<"1m" | "1h" | "4h" | "1d">("1d");
+
+  const [isBuyOpen, setIsBuyOpen] = useState(false);
+  const [buyActivity, setBuyActivity] = useState("");
+
   const [store, setStore] = useState<Store>({
-    marketCapUC: 1000,
+    marketCapUC: 10000, // 10000 UC = 1.000 U$
     tx: [],
     goals: [],
     goodHabits: [],
@@ -142,6 +147,13 @@ export default function YouIncPage() {
 
   const [addictionTitle, setAddictionTitle] = useState("");
 
+  // ⏱️ Real-time tick (needed for 1m chart to "move" even without actions)
+  const [nowTick, setNowTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setNowTick((n) => n + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
   // ------- persistence -------
   useEffect(() => {
     try {
@@ -151,7 +163,7 @@ export default function YouIncPage() {
       if (!parsed || typeof parsed.marketCapUC !== "number") return;
 
       setStore({
-        marketCapUC: parsed.marketCapUC ?? 1000,
+        marketCapUC: parsed.marketCapUC ?? 10000,
         tx: Array.isArray(parsed.tx) ? parsed.tx : [],
         goals: Array.isArray(parsed.goals) ? parsed.goals : [],
         goodHabits: Array.isArray(parsed.goodHabits) ? parsed.goodHabits : [],
@@ -171,33 +183,99 @@ export default function YouIncPage() {
     }
   }, [store]);
 
+  // ------- taxed market cap updates + transactions -------
+  const applyDelta = React.useCallback((kind: DeltaKind, label: string, deltaUC: number) => {
+    setStore((s) => {
+      const { effectiveDeltaUC, taxed } = applyTaxes(kind, deltaUC, s.marketCapUC);
+
+      const nextCap = Math.max(0, s.marketCapUC + effectiveDeltaUC);
+      const tx: Tx = {
+        id: uid(),
+        ts: Date.now(),
+        deltaUC: effectiveDeltaUC,
+        label: taxed ? `${label} (taxed)` : label,
+      };
+
+      return { ...s, marketCapUC: nextCap, tx: [tx, ...s.tx].slice(0, 2000) };
+    });
+  }, []);
+
+  // 🧊 Decay (TEST): -5 UC every 10 seconds, except market closed hours
+  useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  
+    function runHourlyDecayTick() {
+      // Only decay when market is open (your rules.ts defines 04:00–11:59 as CLOSED)
+      if (!isMarketOpen(new Date())) return;
+      applyDelta("decay", "Decay", -5);
+    }
+  
+    function schedule() {
+      const now = new Date();
+  
+      // ms until the next exact hour (e.g. 14:00:00.000)
+      const msToNextHour =
+        (60 - now.getMinutes()) * 60_000 -
+        now.getSeconds() * 1_000 -
+        now.getMilliseconds();
+  
+      timeoutId = setTimeout(() => {
+        // First tick exactly on the hour
+        runHourlyDecayTick();
+  
+        // Then every hour on the hour
+        intervalId = setInterval(runHourlyDecayTick, 60 * 60 * 1000);
+      }, msToNextHour);
+    }
+  
+    schedule();
+  
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [applyDelta]);
+
+  function submitBuyActivity() {
+    const a = buyActivity.trim();
+    if (!a) return;
+
+    applyDelta("buy", `BUY: ${a}`, +25);
+    setBuyActivity("");
+    setIsBuyOpen(false);
+  }
+
   // ------- derived -------
-  const price = useMemo(() => store.marketCapUC / 1000, [store.marketCapUC]);
+  const price = useMemo(() => store.marketCapUC / 10000, [store.marketCapUC]);
+
   const txAsc = useMemo(() => [...store.tx].sort((a, b) => a.ts - b.ts), [store.tx]);
 
-  // ⏱️ real-time tick so candles update even with no actions
-const [nowTick, setNowTick] = useState(0);
+  const candles = useMemo(() => {
+    if (tf === "1m") return buildCandles(store.marketCapUC, txAsc, 60 * 1000, 120);
+    if (tf === "1h") return buildCandles(store.marketCapUC, txAsc, 60 * 60 * 1000, 48);
+    if (tf === "4h") return buildCandles(store.marketCapUC, txAsc, 4 * 60 * 60 * 1000, 42);
+    return buildCandles(store.marketCapUC, txAsc, 24 * 60 * 60 * 1000, 60);
+  }, [tf, store.marketCapUC, txAsc, nowTick]);
 
-useEffect(() => {
-  const id = setInterval(() => {
-    setNowTick((n) => n + 1);
-  }, 1000); // 1 second tick
-
-  return () => clearInterval(id);
-}, []);
-
-const candles = useMemo(() => {
-  if (tf === "1m")
-    return buildCandles(store.marketCapUC, txAsc, 60 * 1000, 120); // last 2 hours
-
-  if (tf === "1h")
-    return buildCandles(store.marketCapUC, txAsc, 60 * 60 * 1000, 48);
-
-  if (tf === "4h")
-    return buildCandles(store.marketCapUC, txAsc, 4 * 60 * 60 * 1000, 42);
-
-  return buildCandles(store.marketCapUC, txAsc, 24 * 60 * 60 * 1000, 60);
-}, [tf, store.marketCapUC, txAsc, nowTick]);
+  const tfChangePct = useMemo(() => {
+    if (!candles || candles.length < 2) return 0;
+  
+    const first = candles[0];
+    const last = candles[candles.length - 1];
+  
+    const base = first.o || 0;
+    if (base <= 0) return 0;
+  
+    return ((last.c - base) / base) * 100;
+  }, [candles]);
+  
+  const tfChangeLabel = useMemo(() => {
+    const sign = tfChangePct > 0 ? "+" : "";
+    return `${sign}${tfChangePct.toFixed(2)}%`;
+  }, [tfChangePct]);
+  
+  const tfChangeIsUp = tfChangePct >= 0;
 
   // ------- helpers -------
   const openModal = () => setIsModalOpen(true);
@@ -299,15 +377,6 @@ const candles = useMemo(() => {
     resetFormForTab("addictions");
   }
 
-  // ------- market cap updates + transactions -------
-  function applyDelta(label: string, deltaUC: number) {
-    setStore((s) => {
-      const nextCap = Math.max(0, s.marketCapUC + deltaUC);
-      const tx: Tx = { id: uid(), ts: Date.now(), deltaUC, label };
-      return { ...s, marketCapUC: nextCap, tx: [tx, ...s.tx].slice(0, 2000) };
-    });
-  }
-
   function removeItem(kind: TabKey, id: string) {
     if (kind === "goals") setStore((s) => ({ ...s, goals: s.goals.filter((x) => x.id !== id) }));
     if (kind === "good") setStore((s) => ({ ...s, goodHabits: s.goodHabits.filter((x) => x.id !== id) }));
@@ -372,10 +441,10 @@ const candles = useMemo(() => {
                       </div>
                     </div>
                     <div className={styles.cardActions}>
-                      <button className={styles.actionPrimary} onClick={() => applyDelta("Goal complete", +400)} type="button">
+                      <button className={styles.actionPrimary} onClick={() => applyDelta("goal", "Goal complete", +400)} type="button">
                         Complete <span className={styles.delta}>+400 UC</span>
                       </button>
-                      <button className={styles.actionDanger} onClick={() => applyDelta("Goal failed", -200)} type="button">
+                      <button className={styles.actionDanger} onClick={() => applyDelta("goal", "Goal failed", -200)} type="button">
                         Failed <span className={styles.delta}>-200 UC</span>
                       </button>
                       <button className={styles.iconBtn} onClick={() => removeItem("goals", g.id)} title="Remove" type="button">
@@ -405,21 +474,15 @@ const candles = useMemo(() => {
                       </div>
                     </div>
                     <div className={styles.cardActions}>
-                    <button
-  className={styles.actionPrimary}
-  onClick={() => applyDelta("Good habit hold", +100)}
-  type="button"
->
-  Hold <span className={styles.delta}>+100 UC</span>
-</button>
-
-<button
-  className={styles.actionDanger}
-  onClick={() => applyDelta("Good habit sold", -25)}
-  type="button"
->
-  Sold <span className={styles.delta}>-25 UC</span>
-</button>
+                      <button className={styles.actionPrimary} onClick={() => applyDelta("good", "Good habit hold", +100)} type="button">
+                        Hold <span className={styles.delta}>+100 UC</span>
+                      </button>
+                      <button className={styles.actionDanger} onClick={() => applyDelta("good", "Good habit sold", -50)} type="button">
+                        Sold <span className={styles.delta}>-50 UC</span>
+                      </button>
+                      <button className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove" type="button">
+                        ✕
+                      </button>
                     </div>
                   </div>
                 ))
@@ -441,11 +504,11 @@ const candles = useMemo(() => {
                       </div>
                     </div>
                     <div className={styles.cardActions}>
-                      <button className={styles.actionPrimary} onClick={() => applyDelta("Bad habit hold", +100)} type="button">
+                      <button className={styles.actionPrimary} onClick={() => applyDelta("bad", "Bad habit hold", +100)} type="button">
                         Hold <span className={styles.delta}>+100 UC</span>
                       </button>
-                      <button className={styles.actionDanger} onClick={() => applyDelta("Bad habit sold", -75)} type="button">
-                        Sold <span className={styles.delta}>-75 UC</span>
+                      <button className={styles.actionDanger} onClick={() => applyDelta("bad", "Bad habit sold", -50)} type="button">
+                        Sold <span className={styles.delta}>-50 UC</span>
                       </button>
                       <button className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove" type="button">
                         ✕
@@ -471,11 +534,11 @@ const candles = useMemo(() => {
                       </div>
                     </div>
                     <div className={styles.cardActions}>
-                      <button className={styles.actionPrimary} onClick={() => applyDelta("Addiction hold", +200)} type="button">
+                      <button className={styles.actionPrimary} onClick={() => applyDelta("addiction", "Addiction hold", +200)} type="button">
                         Hold <span className={styles.delta}>+200 UC</span>
                       </button>
-                      <button className={styles.actionDanger} onClick={() => applyDelta("Addiction sold", -100)} type="button">
-                        Sold <span className={styles.delta}>-150 UC</span>
+                      <button className={styles.actionDanger} onClick={() => applyDelta("addiction", "Addiction sold", -100)} type="button">
+                        Sold <span className={styles.delta}>-100 UC</span>
                       </button>
                       <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button">
                         ✕
@@ -496,18 +559,40 @@ const candles = useMemo(() => {
           </div>
 
           <div className={styles.statBlock}>
-            <div className={styles.statLabel}>Price</div>
-            <div className={styles.statValue}>U${price.toFixed(3)}</div>
-          </div>
+  <div className={styles.statLabel}>Price</div>
+
+  <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+    <div className={styles.statValue}>U${price.toFixed(3)}</div>
+
+    <span
+      className={styles.metaPill}
+      style={{
+        borderColor: tfChangeIsUp ? "rgba(16,185,129,0.35)" : "rgba(244,63,94,0.35)",
+        color: tfChangeIsUp ? "rgba(167,243,208,1)" : "rgba(253,164,175,1)",
+        background: tfChangeIsUp ? "rgba(16,185,129,0.12)" : "rgba(244,63,94,0.12)",
+      }}
+      title={`Change over ${tf.toUpperCase()}`}
+    >
+      {tfChangeLabel}
+    </span>
+  </div>
+</div>
 
           <div className={styles.tfRow}>
-          <button
-  className={`${styles.tfBtn} ${tf === "1m" ? styles.tfBtnOn : ""}`}
-  onClick={() => setTf("1m")}
-  type="button"
->
-  1M
-</button>
+            {/* BUY */}
+            <button
+              className={styles.actionPrimary}
+              type="button"
+              onClick={() => setIsBuyOpen((v) => !v)}
+              title="Log a one-off productive activity"
+            >
+              BUY <span className={styles.delta}>+25 UC</span>
+            </button>
+
+            {/* TF buttons */}
+            <button className={`${styles.tfBtn} ${tf === "1m" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1m")} type="button">
+              1M
+            </button>
             <button className={`${styles.tfBtn} ${tf === "1h" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1h")} type="button">
               1H
             </button>
@@ -520,131 +605,156 @@ const candles = useMemo(() => {
           </div>
         </section>
 
-        <CandleChart data={candles} />
-      </div>
+        {isBuyOpen && (
+          <div className={styles.helperBox} style={{ marginBottom: 12 }}>
+            <div className={styles.helperTitle}>Open a position</div>
+            <div className={styles.helperText}>Log a one-off productive activity (not a habit yet).</div>
 
-      {/* MODAL */}
-      {isModalOpen && (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-          <div className={styles.modal}>
-            <div className={styles.modalHeader}>
-              <div className={styles.modalTitle}>{modalTitle}</div>
-              <button className={styles.iconBtn} onClick={closeModal} aria-label="Close modal" type="button">
-                ✕
+            <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <input
+                className={styles.input}
+                value={buyActivity}
+                onChange={(e) => setBuyActivity(e.target.value)}
+                placeholder="Activity e.g. Running, Camping, Meditation"
+                style={{ marginTop: 0, flex: "1 1 260px" }}
+              />
+
+              <button className={styles.primaryBtn} type="button" onClick={submitBuyActivity} disabled={!buyActivity.trim()}>
+                Completed <span className={styles.delta}>+25 UC</span>
               </button>
-            </div>
 
-            <div className={styles.modalBody}>
-              {tab === "goals" && (
-                <div className={styles.form}>
-                  <label className={styles.label}>
-                    Goal
-                    <input className={styles.input} value={goalTitle} onChange={(e) => setGoalTitle(e.target.value)} autoFocus />
-                  </label>
-
-                  <label className={styles.label}>
-                    Expiry date
-                    <input className={styles.input} type="date" value={goalExpiry} onChange={(e) => setGoalExpiry(e.target.value)} />
-                  </label>
-                </div>
-              )}
-
-              {tab === "good" && (
-                <div className={styles.form}>
-                  <label className={styles.label}>
-                    Habit
-                    <input className={styles.input} value={goodTitle} onChange={(e) => setGoodTitle(e.target.value)} autoFocus />
-                  </label>
-
-                  <div className={styles.row2}>
-                    <label className={styles.label}>
-                      Frequency
-                      <select className={styles.input} value={goodFrequencyMode} onChange={(e) => setGoodFrequencyMode(e.target.value as any)}>
-                        <option value="daily">Every day</option>
-                        <option value="weekly">Pick days</option>
-                      </select>
-                    </label>
-
-                    <label className={styles.label}>
-                      Notes
-                      <input className={styles.input} value={goodNotes} onChange={(e) => setGoodNotes(e.target.value)} placeholder="optional" />
-                    </label>
-                  </div>
-
-                  {goodFrequencyMode === "weekly" && (
-                    <div className={styles.dowRow}>
-                      {[0, 1, 2, 3, 4, 5, 6].map((d) => (
-                        <button
-                          key={d}
-                          type="button"
-                          className={`${styles.dowPill} ${goodDays.includes(d) ? styles.dowPillOn : ""}`}
-                          onClick={() => toggleDow(d)}
-                        >
-                          {formatDow(d)}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {tab === "bad" && (
-                <div className={styles.form}>
-                  <label className={styles.label}>
-                    Bad Habit
-                    <input className={styles.input} value={badTitle} onChange={(e) => setBadTitle(e.target.value)} autoFocus />
-                  </label>
-
-                  <div className={styles.row2}>
-                    <label className={styles.label}>
-                      Expiry
-                      <select className={styles.input} value={badExpiryMode} onChange={(e) => setBadExpiryMode(e.target.value as any)}>
-                        <option value="date">Pick date</option>
-                        <option value="permanent">Permanent</option>
-                      </select>
-                    </label>
-
-                    {badExpiryMode === "date" ? (
-                      <label className={styles.label}>
-                        Expiry date
-                        <input className={styles.input} type="date" value={badExpiryDate} onChange={(e) => setBadExpiryDate(e.target.value)} />
-                      </label>
-                    ) : (
-                      <div className={styles.helperBox}>
-                        <div className={styles.helperTitle}>Permanent</div>
-                        <div className={styles.helperText}>No expiry date. You’re tracking it long-term.</div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {tab === "addictions" && (
-                <div className={styles.form}>
-                  <label className={styles.label}>
-                    Addiction
-                    <input className={styles.input} value={addictionTitle} onChange={(e) => setAddictionTitle(e.target.value)} autoFocus />
-                  </label>
-
-                  <div className={styles.helperBox}>
-                    <div className={styles.helperTitle}>No expiry</div>
-                    <div className={styles.helperText}>Tracked continuously. “Hold” = clean day. “Sold” = relapse.</div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className={styles.modalFooter}>
-              <button className={styles.ghostBtn} onClick={closeModal} type="button">
-                Cancel
-              </button>
-              <button className={styles.primaryBtn} onClick={submit} disabled={!canSubmit()} type="button">
-                Add
+              <button className={styles.ghostBtn} type="button" onClick={() => setIsBuyOpen(false)}>
+                Close
               </button>
             </div>
           </div>
-        </div>
-      )}
+        )}
+
+        <CandleChart data={candles} />
+
+        {/* MODAL */}
+        {isModalOpen && (
+          <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+            <div className={styles.modal}>
+              <div className={styles.modalHeader}>
+                <div className={styles.modalTitle}>{modalTitle}</div>
+                <button className={styles.iconBtn} onClick={closeModal} aria-label="Close modal" type="button">
+                  ✕
+                </button>
+              </div>
+
+              <div className={styles.modalBody}>
+                {tab === "goals" && (
+                  <div className={styles.form}>
+                    <label className={styles.label}>
+                      Goal
+                      <input className={styles.input} value={goalTitle} onChange={(e) => setGoalTitle(e.target.value)} autoFocus />
+                    </label>
+
+                    <label className={styles.label}>
+                      Expiry date
+                      <input className={styles.input} type="date" value={goalExpiry} onChange={(e) => setGoalExpiry(e.target.value)} />
+                    </label>
+                  </div>
+                )}
+
+                {tab === "good" && (
+                  <div className={styles.form}>
+                    <label className={styles.label}>
+                      Habit
+                      <input className={styles.input} value={goodTitle} onChange={(e) => setGoodTitle(e.target.value)} autoFocus />
+                    </label>
+
+                    <div className={styles.row2}>
+                      <label className={styles.label}>
+                        Frequency
+                        <select className={styles.input} value={goodFrequencyMode} onChange={(e) => setGoodFrequencyMode(e.target.value as any)}>
+                          <option value="daily">Every day</option>
+                          <option value="weekly">Pick days</option>
+                        </select>
+                      </label>
+
+                      <label className={styles.label}>
+                        Notes
+                        <input className={styles.input} value={goodNotes} onChange={(e) => setGoodNotes(e.target.value)} placeholder="optional" />
+                      </label>
+                    </div>
+
+                    {goodFrequencyMode === "weekly" && (
+                      <div className={styles.dowRow}>
+                        {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            className={`${styles.dowPill} ${goodDays.includes(d) ? styles.dowPillOn : ""}`}
+                            onClick={() => toggleDow(d)}
+                          >
+                            {formatDow(d)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {tab === "bad" && (
+                  <div className={styles.form}>
+                    <label className={styles.label}>
+                      Bad Habit
+                      <input className={styles.input} value={badTitle} onChange={(e) => setBadTitle(e.target.value)} autoFocus />
+                    </label>
+
+                    <div className={styles.row2}>
+                      <label className={styles.label}>
+                        Expiry
+                        <select className={styles.input} value={badExpiryMode} onChange={(e) => setBadExpiryMode(e.target.value as any)}>
+                          <option value="date">Pick date</option>
+                          <option value="permanent">Permanent</option>
+                        </select>
+                      </label>
+
+                      {badExpiryMode === "date" ? (
+                        <label className={styles.label}>
+                          Expiry date
+                          <input className={styles.input} type="date" value={badExpiryDate} onChange={(e) => setBadExpiryDate(e.target.value)} />
+                        </label>
+                      ) : (
+                        <div className={styles.helperBox}>
+                          <div className={styles.helperTitle}>Permanent</div>
+                          <div className={styles.helperText}>No expiry date. You’re tracking it long-term.</div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {tab === "addictions" && (
+                  <div className={styles.form}>
+                    <label className={styles.label}>
+                      Addiction
+                      <input className={styles.input} value={addictionTitle} onChange={(e) => setAddictionTitle(e.target.value)} autoFocus />
+                    </label>
+
+                    <div className={styles.helperBox}>
+                      <div className={styles.helperTitle}>No expiry</div>
+                      <div className={styles.helperText}>Tracked continuously. “Hold” = clean day. “Sold” = relapse.</div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              <div className={styles.modalFooter}>
+                <button className={styles.ghostBtn} onClick={closeModal} type="button">
+                  Cancel
+                </button>
+                <button className={styles.primaryBtn} onClick={submit} disabled={!canSubmit()} type="button">
+                  Add
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
