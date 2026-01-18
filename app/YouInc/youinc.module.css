@@ -1,5 +1,7 @@
 .page {
   @apply min-h-screen bg-[#070A12] text-white relative overflow-x-hidden;
+  min-height: 100svh;
+  overflow-x: hidden;
 }
 
 .glowA {
@@ -19,10 +21,24 @@
 
 .shell {
   @apply relative mx-auto max-w-5xl px-5 py-12;
+  max-width: 64rem;
+  margin: 0 auto;
+  padding: 16px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
 }
 
 .header {
   @apply flex items-center justify-between gap-4;
+}
+
+.header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  backdrop-filter: blur(10px);
+  background: rgba(7,10,18,0.7);
+  padding-top: calc(10px + env(safe-area-inset-top));
+  padding-bottom: 10px;
 }
 
 .brand {
