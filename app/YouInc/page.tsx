@@ -154,6 +154,30 @@ export default function YouIncPage() {
     return () => clearInterval(id);
   }, []);
 
+  // ----- firebase storage -----
+
+  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+useEffect(() => {
+  // debounce so we don't spam Firestore
+  if (syncTimer.current) clearTimeout(syncTimer.current);
+
+  syncTimer.current = setTimeout(() => {
+    fetch("/api/sync", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-YOUINC-KEY": process.env.NEXT_PUBLIC_YOUINC_SYNC_KEY || "",
+      },
+      body: JSON.stringify({ store }),
+    }).catch(() => {});
+  }, 800);
+
+  return () => {
+    if (syncTimer.current) clearTimeout(syncTimer.current);
+  };
+}, [store]);
+
   // ------- persistence -------
   useEffect(() => {
     try {
