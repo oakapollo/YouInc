@@ -3,6 +3,15 @@
 import { applyTaxes, isMarketOpen, type DeltaKind } from "./rules";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./youinc.module.css";
+import { useAuth } from "../providers";
+import { useRouter } from "next/navigation";
+import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
+import { db } from "../../lib/firebase";
+
+
+
+
+
 
 type TabKey = "goals" | "good" | "bad" | "addictions";
 
@@ -40,7 +49,8 @@ type Store = {
 
 type Candle = { t: number; o: number; h: number; l: number; c: number };
 
-const STORAGE_KEY = "youinc_v1_store";
+
+
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -116,6 +126,11 @@ function buildCandles(startCapUC: number, txAsc: Tx[], bucketMs: number, lookbac
 }
 
 export default function YouIncPage() {
+  const { user, loading } = useAuth();
+  const router = useRouter();
+
+  // ✅ ALL HOOKS MUST RUN EVERY RENDER — so all useState go BEFORE any early return
+
   const [tab, setTab] = useState<TabKey>("goals");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tf, setTf] = useState<"1m" | "1h" | "4h" | "1d">("1d");
@@ -131,6 +146,17 @@ export default function YouIncPage() {
     badHabits: [],
     addictions: [],
   });
+
+  const uidSafe = user?.uid ?? "";
+
+  const storeDocRef = useMemo(() => {
+    if (!uidSafe) return null;
+    return doc(db, "users", uidSafe, "store", "main");
+  }, [uidSafe]);
+
+  const hydratedRef = useRef(false); // got at least one snapshot
+  const suppressWriteRef = useRef(true); // block writes until hydrated
+  const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ------- Modal form state -------
   const [goalTitle, setGoalTitle] = useState("");
@@ -149,126 +175,178 @@ export default function YouIncPage() {
 
   // ⏱️ Real-time tick (needed for 1m chart to "move" even without actions)
   const [nowTick, setNowTick] = useState(0);
+
+  // ✅ redirect effect is fine (it runs after hooks are declared)
   useEffect(() => {
-    const id = setInterval(() => setNowTick((n) => n + 1), 1000);
-    return () => clearInterval(id);
-  }, []);
+    if (!loading && !user) router.replace("/login");
+  }, [loading, user, router]);
 
-  // ----- firebase storage -----
+  // ✅ reset refs when uid changes (login/logout)
+  useEffect(() => {
+    hydratedRef.current = false;
+    suppressWriteRef.current = true;
 
-  const syncTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    if (writeTimerRef.current) {
+      clearTimeout(writeTimerRef.current);
+      writeTimerRef.current = null;
+    }
+  }, [uidSafe]);
 
-useEffect(() => {
-  // debounce so we don't spam Firestore
-  if (syncTimer.current) clearTimeout(syncTimer.current);
+  // ✅ Firestore: hydrate + live subscribe
+  useEffect(() => {
+    if (!storeDocRef) return;
 
-  syncTimer.current = setTimeout(() => {
-    fetch("/api/sync", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-YOUINC-KEY": process.env.NEXT_PUBLIC_YOUINC_SYNC_KEY || "",
-      },
-      body: JSON.stringify({ store }),
-    }).catch(() => {});
-  }, 800);
+    let unsub: (() => void) | null = null;
+    let cancelled = false;
 
-  return () => {
-    if (syncTimer.current) clearTimeout(syncTimer.current);
-  };
-}, [store]);
+    (async () => {
+      try {
+        // If doc doesn't exist yet, optionally migrate localStorage once
+        const snap = await getDoc(storeDocRef);
+        if (!snap.exists()) {
+          try {
+            const raw = localStorage.getItem("youinc_v1_store");
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              await setDoc(storeDocRef, parsed, { merge: true });
+              localStorage.removeItem("youinc_v1_store");
+            } else {
+              // create base doc so it's visible immediately
+              await setDoc(
+                storeDocRef,
+                {
+                  marketCapUC: 10000,
+                  tx: [],
+                  goals: [],
+                  goodHabits: [],
+                  badHabits: [],
+                  addictions: [],
+                } satisfies Store,
+                { merge: true }
+              );
+            }
+          } catch {}
+        }
+
+        if (cancelled) return;
+
+        unsub = onSnapshot(
+          storeDocRef,
+          (docSnap) => {
+            if (docSnap.exists()) {
+              const data = docSnap.data() as Partial<Store>;
+
+              setStore((prev) => ({
+                marketCapUC: typeof data.marketCapUC === "number" ? data.marketCapUC : prev.marketCapUC,
+                tx: Array.isArray(data.tx) ? (data.tx as Tx[]) : prev.tx,
+                goals: Array.isArray(data.goals) ? (data.goals as Goal[]) : prev.goals,
+                goodHabits: Array.isArray(data.goodHabits) ? (data.goodHabits as GoodHabit[]) : prev.goodHabits,
+                badHabits: Array.isArray(data.badHabits) ? (data.badHabits as BadHabit[]) : prev.badHabits,
+                addictions: Array.isArray(data.addictions) ? (data.addictions as Addiction[]) : prev.addictions,
+              }));
+            }
+
+            hydratedRef.current = true;
+            suppressWriteRef.current = false;
+          },
+          (err) => {
+            console.error("onSnapshot error:", err);
+            hydratedRef.current = true;
+            suppressWriteRef.current = false;
+          }
+        );
+      } catch (e) {
+        console.error("Firestore hydrate failed:", e);
+        hydratedRef.current = true;
+        suppressWriteRef.current = false;
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unsub) unsub();
+    };
+  }, [storeDocRef]);
+
+
+
+  // (rest of your component continues here...)
+
 
   // ------- persistence -------
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as Store;
-      if (!parsed || typeof parsed.marketCapUC !== "number") return;
 
-      setStore({
-        marketCapUC: parsed.marketCapUC ?? 10000,
-        tx: Array.isArray(parsed.tx) ? parsed.tx : [],
-        goals: Array.isArray(parsed.goals) ? parsed.goals : [],
-        goodHabits: Array.isArray(parsed.goodHabits) ? parsed.goodHabits : [],
-        badHabits: Array.isArray(parsed.badHabits) ? parsed.badHabits : [],
-        addictions: Array.isArray(parsed.addictions) ? parsed.addictions : [],
-      });
-    } catch {
-      // ignore
-    }
-  }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
-    } catch {
-      // ignore
-    }
-  }, [store]);
 
   // ------- taxed market cap updates + transactions -------
-  const applyDelta = React.useCallback((kind: DeltaKind, label: string, deltaUC: number) => {
-    setStore((s) => {
-      const { effectiveDeltaUC, taxed } = applyTaxes(kind, deltaUC, s.marketCapUC);
+function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
+  setStore((s) => {
+    const { effectiveDeltaUC, taxed } = applyTaxes(kind, deltaUC, s.marketCapUC);
 
-      const nextCap = Math.max(0, s.marketCapUC + effectiveDeltaUC);
-      const tx: Tx = {
-        id: uid(),
-        ts: Date.now(),
-        deltaUC: effectiveDeltaUC,
-        label: taxed ? `${label} (taxed)` : label,
-      };
+    const nextCap = Math.max(0, s.marketCapUC + effectiveDeltaUC);
 
-      return { ...s, marketCapUC: nextCap, tx: [tx, ...s.tx].slice(0, 2000) };
-    });
-  }, []);
-
-  // 🧊 Decay (TEST): -5 UC every 10 seconds, except market closed hours
-  useEffect(() => {
-    let intervalId: ReturnType<typeof setInterval> | null = null;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  
-    function runHourlyDecayTick() {
-      // Only decay when market is open (your rules.ts defines 04:00–11:59 as CLOSED)
-      if (!isMarketOpen(new Date())) return;
-      applyDelta("decay", "Decay", -5);
-    }
-  
-    function schedule() {
-      const now = new Date();
-  
-      // ms until the next exact hour (e.g. 14:00:00.000)
-      const msToNextHour =
-        (60 - now.getMinutes()) * 60_000 -
-        now.getSeconds() * 1_000 -
-        now.getMilliseconds();
-  
-      timeoutId = setTimeout(() => {
-        // First tick exactly on the hour
-        runHourlyDecayTick();
-  
-        // Then every hour on the hour
-        intervalId = setInterval(runHourlyDecayTick, 60 * 60 * 1000);
-      }, msToNextHour);
-    }
-  
-    schedule();
-  
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-      if (intervalId) clearInterval(intervalId);
+    const tx: Tx = {
+      id: uid(),
+      ts: Date.now(),
+      deltaUC: effectiveDeltaUC,
+      label: taxed ? `${label} (taxed)` : label,
     };
-  }, [applyDelta]);
 
-  function submitBuyActivity() {
-    const a = buyActivity.trim();
-    if (!a) return;
+    return { ...s, marketCapUC: nextCap, tx: [tx, ...s.tx].slice(0, 2000) };
+  });
+}
 
-    applyDelta("buy", `BUY: ${a}`, +25);
-    setBuyActivity("");
-    setIsBuyOpen(false);
+
+  // 🧊 Decay: -5 UC every hour ON THE HOUR, only when market is open
+useEffect(() => {
+  // If auth isn’t ready yet, don’t schedule anything.
+  // (This prevents weird scheduling during redirects / refresh)
+  if (loading || !user) return;
+
+  let intervalId: ReturnType<typeof setInterval> | null = null;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  function runHourlyDecayTick() {
+    // Only decay when market is open (your rules.ts defines 04:00–11:59 as CLOSED)
+    if (!isMarketOpen(new Date())) return;
+    applyDelta("decay", "Decay", -5);
   }
+
+  function schedule() {
+    const now = new Date();
+
+    // ms until the next exact hour (e.g. 14:00:00.000)
+    const msToNextHour =
+      (60 - now.getMinutes()) * 60_000 -
+      now.getSeconds() * 1_000 -
+      now.getMilliseconds();
+
+    timeoutId = setTimeout(() => {
+      // First tick exactly on the hour
+      runHourlyDecayTick();
+
+      // Then every hour on the hour
+      intervalId = setInterval(runHourlyDecayTick, 60 * 60 * 1000);
+    }, Math.max(0, msToNextHour));
+  }
+
+  schedule();
+
+  return () => {
+    if (timeoutId) clearTimeout(timeoutId);
+    if (intervalId) clearInterval(intervalId);
+  };
+  // We intentionally only depend on auth readiness.
+  // applyDelta is a normal function (not a hook), so do NOT put it in deps.
+}, [loading, user]);
+
+function submitBuyActivity() {
+  const a = buyActivity.trim();
+  if (!a) return;
+
+  applyDelta("buy", `BUY: ${a}`, +25);
+  setBuyActivity("");
+  setIsBuyOpen(false);
+}
 
   // ------- derived -------
   const price = useMemo(() => store.marketCapUC / 10000, [store.marketCapUC]);
@@ -353,6 +431,35 @@ useEffect(() => {
       return true;
     }
     return addictionTitle.trim().length > 0;
+  }
+
+  // ✅ Firestore: debounced write
+  useEffect(() => {
+    if (!storeDocRef) return;
+    if (!hydratedRef.current) return;
+    if (suppressWriteRef.current) return;
+
+    if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
+
+    writeTimerRef.current = setTimeout(async () => {
+      try {
+        await setDoc(storeDocRef, store, { merge: true });
+      } catch (e) {
+        console.error("Failed to write store:", e);
+      }
+    }, 600);
+
+    return () => {
+      if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
+    };
+  }, [store, storeDocRef]);
+
+  // ✅ NOW early returns are safe (ALL hooks above always ran)
+  if (loading) {
+    return <div className={styles.page}>Loading…</div>;
+  }
+  if (!user) {
+    return null;
   }
 
   function submit() {
