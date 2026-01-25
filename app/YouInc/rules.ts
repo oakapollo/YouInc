@@ -51,6 +51,7 @@ export function getUkOffsetMinutes(now = new Date()) {
   return sign * (hours * 60 + minutes);
 }
 
+
 export function isMarketOpen(now = new Date()) {
   const h = getUkHour(now);
   return !(h >= 4 && h < 12);

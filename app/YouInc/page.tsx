@@ -1,6 +1,6 @@
 "use client";
 
-import { applyTaxes, isMarketOpen, type DeltaKind } from "./rules";
+import { applyTaxes, getUkOffsetMinutes, isMarketOpen, type DeltaKind } from "./rules";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./youinc.module.css";
 import { useAuth } from "../providers";
@@ -136,8 +136,7 @@ export default function YouIncPage() {
 
   const [tab, setTab] = useState<TabKey>("goals");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [tf, setTf] = useState<"1m" | "1h" | "4h" | "1d">("1d");
-
+  const [tf, setTf] = useState<"4h" | "8h" | "1d" | "1w">("1d");
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const [buyActivity, setBuyActivity] = useState("");
 
@@ -358,9 +357,9 @@ function submitBuyActivity() {
   const txAsc = useMemo(() => [...store.tx].sort((a, b) => a.ts - b.ts), [store.tx]);
 
   const candles = useMemo(() => {
-    if (tf === "1m") return buildCandles(store.marketCapUC, txAsc, 60 * 1000, 120);
-    if (tf === "1h") return buildCandles(store.marketCapUC, txAsc, 60 * 60 * 1000, 48);
     if (tf === "4h") return buildCandles(store.marketCapUC, txAsc, 4 * 60 * 60 * 1000, 42);
+    if (tf === "8h") return buildCandles(store.marketCapUC, txAsc, 8 * 60 * 60 * 1000, 42);
+    if (tf === "1w") return buildCandles(store.marketCapUC, txAsc, 7 * 24 * 60 * 60 * 1000, 26);
     return buildCandles(store.marketCapUC, txAsc, 24 * 60 * 60 * 1000, 60);
   }, [tf, store.marketCapUC, txAsc, nowTick]);
 
@@ -530,9 +529,9 @@ function submitBuyActivity() {
           <div className={styles.brand}>
             <div className={styles.logo} />
             <div className={styles.brandText}>
-              <div className={styles.title}>YouInc</div>
-              <div className={styles.subTitle}>You are the stock.</div>
-            </div>
+            <div className={styles.title}>{user?.displayName ?? user?.email?.split("@")[0] ?? "You"}</div>
+              <div className={styles.subTitle}>{user?.displayName ?? user?.email?.split("@")[0] ?? "You"}</div>    
+                      </div>
           </div>
 
           <button className={styles.addBtn} onClick={openModal} type="button">
@@ -725,17 +724,17 @@ function submitBuyActivity() {
             </button>
 
             {/* TF buttons */}
-            <button className={`${styles.tfBtn} ${tf === "1m" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1m")} type="button">
-              1M
-            </button>
-            <button className={`${styles.tfBtn} ${tf === "1h" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1h")} type="button">
-              1H
-            </button>
             <button className={`${styles.tfBtn} ${tf === "4h" ? styles.tfBtnOn : ""}`} onClick={() => setTf("4h")} type="button">
               4H
             </button>
+            <button className={`${styles.tfBtn} ${tf === "8h" ? styles.tfBtnOn : ""}`} onClick={() => setTf("8h")} type="button">
+              8H
+            </button>
             <button className={`${styles.tfBtn} ${tf === "1d" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1d")} type="button">
               1D
+            </button>
+            <button className={`${styles.tfBtn} ${tf === "1w" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1w")} type="button">
+              1W
             </button>
           </div>
         </section>
