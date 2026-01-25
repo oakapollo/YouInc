@@ -94,6 +94,8 @@
   max-height: 380px; /* tweak if you want more/less */
   overflow-y: auto;
   padding-right: 6px;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 
 .list::-webkit-scrollbar {
@@ -278,4 +280,14 @@
 .chartWrap {
   @apply rounded-3xl bg-black/25 ring-1 ring-white/10 p-3 sm:p-4;
   margin-bottom: 28px;
+}
+
+.chartSvg {
+  touch-action: pan-y;
+}
+
+@media (pointer: coarse) {
+  .chartSvg {
+    pointer-events: none;
+  }
 }
