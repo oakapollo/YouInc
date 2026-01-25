@@ -46,13 +46,15 @@ type Store = {
   badHabits: BadHabit[];
   addictions: Addiction[];
 
+
   // NEW: tracks the last hour-bucket we processed decay for (ms since epoch, floored to hour)
   lastDecayHourTs?: number;
 };
 
 type Candle = { t: number; o: number; h: number; l: number; c: number };
 
-
+const [storeError, setStoreError] = useState<string | null>(null);
+const [hydrateAttempt, setHydrateAttempt] = useState(0);
 
 
 function uid() {
@@ -200,6 +202,9 @@ export default function YouIncPage() {
 
     let unsub: (() => void) | null = null;
     let cancelled = false;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+    setStoreError(null);
 
     (async () => {
       try {
@@ -248,13 +253,22 @@ export default function YouIncPage() {
               }));
             }
 
-            hydratedRef.current = true;
-            suppressWriteRef.current = false;
+            hydratedRef.current = false;
+            suppressWriteRef.current = true;
+            setStoreError("We couldn't sync your data. Check your connection and try again.");
+            if (!cancelled) {
+              retryTimer = setTimeout(() => setHydrateAttempt((v) => v + 1), 3000);
+            }            setStoreError(null);
+
           },
           (err) => {
             console.error("onSnapshot error:", err);
-            hydratedRef.current = true;
-            suppressWriteRef.current = false;
+            hydratedRef.current = false;
+            suppressWriteRef.current = true;
+            setStoreError("We couldn't load your data. We'll keep retrying.");
+            if (!cancelled) {
+              retryTimer = setTimeout(() => setHydrateAttempt((v) => v + 1), 3000);
+            }
           }
         );
       } catch (e) {
@@ -266,10 +280,10 @@ export default function YouIncPage() {
 
     return () => {
       cancelled = true;
+      if (retryTimer) clearTimeout(retryTimer);
       if (unsub) unsub();
     };
-  }, [storeDocRef]);
-
+  }, [storeDocRef, hydrateAttempt]);
 
 
   // (rest of your component continues here...)
@@ -535,12 +549,19 @@ function submitBuyActivity() {
                       </div>
           </div>
 
-          <button className={styles.addBtn} onClick={openModal} type="button">
-            <span className={styles.addPlus}>＋</span>
-            Add
-          </button>
+          <div className={styles.headerActions}>
+            <a className={styles.secondaryBtn} href="/logout">
+              Switch account
+            </a>
+            <button className={styles.addBtn} onClick={openModal} type="button">
+              <span className={styles.addPlus}>＋</span>
+              Add
+            </button>
+          </div>
         </header>
 
+        {storeError ? <div className={styles.syncWarning}>{storeError}</div> : null}
+        
         <nav className={styles.tabs}>
           <button className={`${styles.tab} ${tab === "goals" ? styles.tabActive : ""}`} onClick={() => switchTab("goals")} type="button">
             Goals
