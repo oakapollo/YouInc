@@ -529,8 +529,7 @@ function submitBuyActivity() {
         id: uid(),
         title: badTitle.trim(),
         expiryMode: badExpiryMode,
-        expiryDate: badExpiryMode === "date" ? badExpiryDate : undefined,
-        createdAt: Date.now(),
+        ...(badExpiryMode === "date" ? { expiryDate: badExpiryDate } : {}),        createdAt: Date.now(),
       };
       setStore((s) => ({ ...s, badHabits: [item, ...s.badHabits] }));
       closeModal();
