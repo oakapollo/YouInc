@@ -4,8 +4,8 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "./auth.module.css";
-import { loginWithEmail } from "/lib/auth";
-import { useAuth } from "/app/providers";
+import { loginWithEmail } from "../../lib/auth";
+import { useAuth } from "../../app/providers";
 
 export default function LoginPage() {
   const router = useRouter();
