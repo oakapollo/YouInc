@@ -39,12 +39,15 @@ type Addiction = { id: string; title: string; createdAt: number };
 type Tx = { id: string; ts: number; deltaUC: number; label: string };
 
 type Store = {
-  marketCapUC: number; // 1000 UC = 1.000 U$
+  marketCapUC: number;
   tx: Tx[];
   goals: Goal[];
   goodHabits: GoodHabit[];
   badHabits: BadHabit[];
   addictions: Addiction[];
+
+  // NEW: tracks the last hour-bucket we processed decay for (ms since epoch, floored to hour)
+  lastDecayHourTs?: number;
 };
 
 type Candle = { t: number; o: number; h: number; l: number; c: number };
