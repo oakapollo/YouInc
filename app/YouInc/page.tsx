@@ -299,14 +299,22 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
 }
 
 
-  // 🧊 Decay: -5 UC every hour ON THE HOUR, only when market is open
-useEffect(() => {
+// 🧊 Decay: -5 UC every hour for 16 hours, only when market is open (UK time)
+
+  useEffect(() => {
   // If auth isn’t ready yet, don’t schedule anything.
   // (This prevents weird scheduling during redirects / refresh)
   if (loading || !user) return;
 
   let intervalId: ReturnType<typeof setInterval> | null = null;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  function msToNextUkHour(now = new Date()) {
+    const ukNow = new Date(now.toLocaleString("en-GB", { timeZone: "Europe/London" }));
+    const nextUkHour = new Date(ukNow);
+    nextUkHour.setHours(ukNow.getHours() + 1, 0, 0, 0);
+    return Math.max(0, nextUkHour.getTime() - ukNow.getTime());
+  }
 
   function runHourlyDecayTick() {
     // Only decay when market is open (your rules.ts defines 04:00–11:59 as CLOSED)
@@ -315,21 +323,14 @@ useEffect(() => {
   }
 
   function schedule() {
-    const now = new Date();
-
-    // ms until the next exact hour (e.g. 14:00:00.000)
-    const msToNextHour =
-      (60 - now.getMinutes()) * 60_000 -
-      now.getSeconds() * 1_000 -
-      now.getMilliseconds();
-
+   
     timeoutId = setTimeout(() => {
       // First tick exactly on the hour
       runHourlyDecayTick();
 
       // Then every hour on the hour
       intervalId = setInterval(runHourlyDecayTick, 60 * 60 * 1000);
-    }, Math.max(0, msToNextHour));
+    }, msToNextUkHour());
   }
 
   schedule();

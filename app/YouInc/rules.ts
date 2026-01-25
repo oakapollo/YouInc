@@ -27,8 +27,17 @@ export function applyTaxes(kind: DeltaKind, deltaUC: number, marketCapUC: number
   return { effectiveDeltaUC, taxed: effectiveDeltaUC !== deltaUC };
 }
 
-// Flat window: 04:00–11:59 (UK local time)
+export function getUkHour(now = new Date()) {
+  return Number(
+    new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      hour12: false,
+      timeZone: "Europe/London",
+    }).format(now)
+  );
+}
+
 export function isMarketOpen(now = new Date()) {
-  const h = now.getHours();
+  const h = getUkHour(now);
   return !(h >= 4 && h < 12);
 }
