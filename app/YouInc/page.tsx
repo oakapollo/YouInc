@@ -56,6 +56,21 @@ type Candle = { t: number; o: number; h: number; l: number; c: number };
 const [storeError, setStoreError] = useState<string | null>(null);
 const [hydrateAttempt, setHydrateAttempt] = useState(0);
 
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefined(item)) as T;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined);
+    const next = entries.reduce<Record<string, unknown>>((acc, [k, v]) => {
+      acc[k] = stripUndefined(v);
+      return acc;
+    }, {});
+    return next as T;
+  }
+  return value;
+}
+
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -151,6 +166,8 @@ export default function YouIncPage() {
     addictions: [],
   });
 
+  const [storeError, setStoreError] = useState<string | null>(null);
+  const [hydrateAttempt, setHydrateAttempt] = useState(0);
   const uidSafe = user?.uid ?? "";
 
   const storeDocRef = useMemo(() => {
@@ -461,7 +478,8 @@ function submitBuyActivity() {
 
     writeTimerRef.current = setTimeout(async () => {
       try {
-        await setDoc(storeDocRef, store, { merge: true });
+        const cleanStore = stripUndefined(store);
+        await setDoc(storeDocRef, cleanStore, { merge: true });
       } catch (e) {
         console.error("Failed to write store:", e);
       }
