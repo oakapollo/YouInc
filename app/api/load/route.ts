@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { db } from "@/app/YouInc/firebaseAdmin";
-
+import { db } from "../../YouInc/firebaseAdmin";
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
