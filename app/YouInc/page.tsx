@@ -309,10 +309,11 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
   function msToNextUkHour(now = new Date()) {
-    const ukNow = new Date(now.toLocaleString("en-GB", { timeZone: "Europe/London" }));
-    const nextUkHour = new Date(ukNow);
-    nextUkHour.setHours(ukNow.getHours() + 1, 0, 0, 0);
-    return Math.max(0, nextUkHour.getTime() - ukNow.getTime());
+    const offsetMinutes = getUkOffsetMinutes(now);
+    const ukNowMs = now.getTime() + offsetMinutes * 60 * 1000;
+    const hourMs = 60 * 60 * 1000;
+    const nextUkHourMs = Math.floor(ukNowMs / hourMs) * hourMs + hourMs;
+    return Math.max(0, nextUkHourMs - ukNowMs);
   }
 
   function runHourlyDecayTick() {
