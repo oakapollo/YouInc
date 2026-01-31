@@ -53,8 +53,6 @@ type Store = {
 
 type Candle = { t: number; o: number; h: number; l: number; c: number };
 
-
-
 function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
     return value.map((item) => stripUndefined(item)) as T;
@@ -191,7 +189,6 @@ function countOpenBucketsBetween(lastBucketUtcMs: number, currentBucketUtcMs: nu
   return openBuckets;
 }
 
-
 export default function YouIncPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -255,7 +252,7 @@ export default function YouIncPage() {
   useEffect(() => {
     hydratedRef.current = false;
     suppressWriteRef.current = true;
-    
+    decayInitRef.current = false;
 
     if (writeTimerRef.current) {
       clearTimeout(writeTimerRef.current);
@@ -376,87 +373,84 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
 }
 
 
-// 🧊 Decay: -5 UC every hour for 16 hours, only when market is open (UK time)
-const runDecayCatchUp = useCallback(async () => {
-  const now = new Date();
-  const currentBucketMs = getUkHourBucketStartMs(now);
+  const runDecayCatchUp = useCallback(async () => {
+    const now = new Date();
+    const currentBucketMs = getUkHourBucketStartMs(now);
 
-  if (storeDocRef) {
-    try {
-      await runTransaction(db, async (transaction) => {
-        const snap = await transaction.get(storeDocRef);
-        const data = (snap.exists() ? snap.data() : {}) as Partial<Store>;
+    if (storeDocRef) {
+      try {
+        await runTransaction(db, async (transaction) => {
+          const snap = await transaction.get(storeDocRef);
+          const data = (snap.exists() ? snap.data() : {}) as Partial<Store>;
 
-        const lastBucketMs = typeof data.lastDecayHourTs === "number" ? data.lastDecayHourTs : undefined;
-        const marketCapUC = typeof data.marketCapUC === "number" ? data.marketCapUC : 10000;
-        const tx = Array.isArray(data.tx) ? (data.tx as Tx[]) : [];
+          const lastBucketMs = typeof data.lastDecayHourTs === "number" ? data.lastDecayHourTs : undefined;
+          const marketCapUC = typeof data.marketCapUC === "number" ? data.marketCapUC : 10000;
+          const tx = Array.isArray(data.tx) ? (data.tx as Tx[]) : [];
 
-        if (lastBucketMs === undefined) {
-          transaction.set(storeDocRef, { lastDecayHourTs: currentBucketMs }, { merge: true });
-          return;
-        }
+          if (lastBucketMs === undefined) {
+            transaction.set(storeDocRef, { lastDecayHourTs: currentBucketMs }, { merge: true });
+            return;
+          }
 
-        const openBuckets = countOpenBucketsBetween(lastBucketMs, currentBucketMs);
-        const update: Partial<Store> = { lastDecayHourTs: currentBucketMs };
+          const openBuckets = countOpenBucketsBetween(lastBucketMs, currentBucketMs);
+          const update: Partial<Store> = { lastDecayHourTs: currentBucketMs };
 
-        if (openBuckets > 0) {
-          const deltaUC = -5 * openBuckets;
-          const { effectiveDeltaUC } = applyTaxes("decay", deltaUC, marketCapUC);
-          const nextCap = Math.max(0, marketCapUC + effectiveDeltaUC);
-          const decayTx: Tx = {
-            id: uid(),
-            ts: Date.now(),
-            deltaUC: effectiveDeltaUC,
-            label: `Decay x${openBuckets}`,
-          };
+          if (openBuckets > 0) {
+            const deltaUC = -5 * openBuckets;
+            const { effectiveDeltaUC } = applyTaxes("decay", deltaUC, marketCapUC);
+            const nextCap = Math.max(0, marketCapUC + effectiveDeltaUC);
+            const decayTx: Tx = {
+              id: uid(),
+              ts: Date.now(),
+              deltaUC: effectiveDeltaUC,
+              label: `Decay x${openBuckets}`,
+            };
 
-          update.marketCapUC = nextCap;
-          update.tx = [decayTx, ...tx].slice(0, 2000);
-        }
+            update.marketCapUC = nextCap;
+            update.tx = [decayTx, ...tx].slice(0, 2000);
+          }
 
-        transaction.set(storeDocRef, stripUndefined(update), { merge: true });
-      });
-      return;
-    } catch (error) {
-      console.error("Decay transaction failed:", error);
-    }
-  }
-
-  setStore((prev) => {
-    const lastBucketMs = prev.lastDecayHourTs;
-    if (lastBucketMs === undefined) {
-      return { ...prev, lastDecayHourTs: currentBucketMs };
+          transaction.set(storeDocRef, stripUndefined(update), { merge: true });
+        });
+        return;
+      } catch (error) {
+        console.error("Decay transaction failed:", error);
+      }
     }
 
-    const openBuckets = countOpenBucketsBetween(lastBucketMs, currentBucketMs);
-    const nextState: Store = { ...prev, lastDecayHourTs: currentBucketMs };
+    setStore((prev) => {
+      const lastBucketMs = prev.lastDecayHourTs;
+      if (lastBucketMs === undefined) {
+        return { ...prev, lastDecayHourTs: currentBucketMs };
+      }
 
-    if (openBuckets > 0) {
-      const deltaUC = -5 * openBuckets;
-      const { effectiveDeltaUC } = applyTaxes("decay", deltaUC, prev.marketCapUC);
-      const decayTx: Tx = {
-        id: uid(),
-        ts: Date.now(),
-        deltaUC: effectiveDeltaUC,
-        label: `Decay x${openBuckets}`,
-      };
+      const openBuckets = countOpenBucketsBetween(lastBucketMs, currentBucketMs);
+      const nextState: Store = { ...prev, lastDecayHourTs: currentBucketMs };
 
-      nextState.marketCapUC = Math.max(0, prev.marketCapUC + effectiveDeltaUC);
-      nextState.tx = [decayTx, ...prev.tx].slice(0, 2000);
-    }
+      if (openBuckets > 0) {
+        const deltaUC = -5 * openBuckets;
+        const { effectiveDeltaUC } = applyTaxes("decay", deltaUC, prev.marketCapUC);
+        const decayTx: Tx = {
+          id: uid(),
+          ts: Date.now(),
+          deltaUC: effectiveDeltaUC,
+          label: `Decay x${openBuckets}`,
+        };
 
-    return nextState;
-  });
-}, [storeDocRef]);
+        nextState.marketCapUC = Math.max(0, prev.marketCapUC + effectiveDeltaUC);
+        nextState.tx = [decayTx, ...prev.tx].slice(0, 2000);
+      }
 
-// 🧊 Decay scheduler: run once after hydration and after every UK-hour boundary
+      return nextState;
+    });
+  }, [storeDocRef]);
+
+  // 🧊 Decay scheduler: run once after hydration and after every UK-hour boundary
   useEffect(() => {
     if (loading || !user) return;
 
     let cancelled = false;
 
-  function schedule() {
-   
     const scheduleNextTick = () => {
       if (decayTimerRef.current) {
         clearTimeout(decayTimerRef.current);
@@ -465,7 +459,7 @@ const runDecayCatchUp = useCallback(async () => {
       const nextBoundaryMs = getNextUkHourBucketStartMs(now);
       const delay = Math.max(0, nextBoundaryMs - now.getTime() + 2000);
 
-  decayTimerRef.current = setTimeout(async () => {
+      decayTimerRef.current = setTimeout(async () => {
         if (cancelled) return;
         await runDecayCatchUp();
         scheduleNextTick();
