@@ -92,7 +92,12 @@ function floorToBucket(ts: number, bucketMs: number) {
 function buildCandles(startCapUC: number, txAsc: Tx[], bucketMs: number, lookbackBuckets: number): Candle[] {
   const now = Date.now();
   const endBucket = floorToBucket(now, bucketMs);
-  const startBucket = endBucket - bucketMs * (lookbackBuckets - 1);
+// Expand lookback to cover historical tx so older candles are rendered from stored data.
+const earliestTx = txAsc[0]?.ts ?? endBucket;
+const earliestBucket = floorToBucket(earliestTx, bucketMs);
+const computedBuckets = Math.max(1, Math.floor((endBucket - earliestBucket) / bucketMs) + 1);
+const effectiveBuckets = Math.max(lookbackBuckets, computedBuckets);
+const startBucket = endBucket - bucketMs * (effectiveBuckets - 1);
 
   // reverse-apply tx after startBucket to estimate cap at startBucket
   let capAtStart = startCapUC;
@@ -242,6 +247,12 @@ export default function YouIncPage() {
 
   // ⏱️ Real-time tick (needed for 1m chart to "move" even without actions)
   const [nowTick, setNowTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowTick(Date.now()), 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
 
   // ✅ redirect effect is fine (it runs after hooks are declared)
   useEffect(() => {
@@ -497,8 +508,8 @@ function submitBuyActivity() {
   const txAsc = useMemo(() => [...store.tx].sort((a, b) => a.ts - b.ts), [store.tx]);
 
   const candles = useMemo(() => {
-    if (tf === "4h") return buildCandles(store.marketCapUC, txAsc, 4 * 60 * 60 * 1000, 42);
-    if (tf === "8h") return buildCandles(store.marketCapUC, txAsc, 8 * 60 * 60 * 1000, 42);
+    if (tf === "4h") return buildCandles(store.marketCapUC, txAsc, 4 * 60 * 60 * 1000, 90);
+    if (tf === "8h") return buildCandles(store.marketCapUC, txAsc, 8 * 60 * 60 * 1000, 90);
     if (tf === "1w") return buildCandles(store.marketCapUC, txAsc, 7 * 24 * 60 * 60 * 1000, 26);
     return buildCandles(store.marketCapUC, txAsc, 24 * 60 * 60 * 1000, 60);
   }, [tf, store.marketCapUC, txAsc, nowTick]);
@@ -912,7 +923,8 @@ function submitBuyActivity() {
           </div>
         )}
 
-        <CandleChart data={candles} />
+<CandleChart data={candles} tx={store.tx} timeframe={tf} />
+
 
         {/* MODAL */}
         {isModalOpen && (
@@ -1042,16 +1054,112 @@ function submitBuyActivity() {
 }
 
 /* ---------------- CHART ---------------- */
+function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timeframe: "4h" | "8h" | "1d" | "1w" }) {
 
-function CandleChart({ data }: { data: Candle[] }) {
+
   const [hover, setHover] = useState<Candle | null>(null);
+
+  const [tooltip, setTooltip] = useState<{ candle: Candle; x: number; y: number } | null>(null);
+  const [selectedCandleKey, setSelectedCandleKey] = useState<number | null>(null);
+  const [autoFollow, setAutoFollow] = useState(true);
+  // Viewport state: how many candles are visible + how far we are panned from the latest candle.
+  const [viewport, setViewport] = useState({ visibleCount: 90, offsetFromRight: 0 });
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const pointerStateRef = useRef({
+    pointers: new Map<number, { x: number; y: number }>(),
+    isPanning: false,
+    panPointerId: null as number | null,
+    startX: 0,
+    startY: 0,
+    startOffset: 0,
+    longPressTimer: null as ReturnType<typeof setTimeout> | null,
+    pinchStartDistance: 0,
+    pinchStartVisible: 0,
+  });
+  const [chartWidth, setChartWidth] = useState(1000);
 
   const padding = { top: 12, right: 14, bottom: 24, left: 44 };
   const w = 1000;
   const h = 320;
+  const candleWidthRatio = 0.7;
+  const minCandleWidth = 3;
+  const maxCandleWidth = 18;
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry?.contentRect) {
+        setChartWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const bucketMs = useMemo(() => {
+    if (timeframe === "4h") return 4 * 60 * 60 * 1000;
+    if (timeframe === "8h") return 8 * 60 * 60 * 1000;
+    if (timeframe === "1w") return 7 * 24 * 60 * 60 * 1000;
+    return 24 * 60 * 60 * 1000;
+  }, [timeframe]);
+
+  const txByBucket = useMemo(() => {
+    const map = new Map<number, Tx[]>();
+    for (const entry of tx) {
+      const bucket = floorToBucket(entry.ts, bucketMs);
+      const list = map.get(bucket) ?? [];
+      list.push(entry);
+      map.set(bucket, list);
+    }
+    return map;
+  }, [bucketMs, tx]);
+
+  const usablePx = Math.max(1, chartWidth - padding.left - padding.right);
+  const minVisible = Math.max(20, Math.ceil(usablePx / (maxCandleWidth / candleWidthRatio)));
+  const maxVisible = Math.max(minVisible, Math.min(250, Math.floor(usablePx / (minCandleWidth / candleWidthRatio))));
+
+  const clampVisibleCount = useCallback(
+    (count: number) => {
+      if (!data.length) return 0;
+      const clamped = Math.max(minVisible, Math.min(maxVisible, Math.round(count)));
+      return Math.min(data.length, clamped);
+    },
+    [data.length, maxVisible, minVisible]
+  );
+
+  const visibleState = useMemo(() => {
+    if (!data.length) {
+      return { visibleData: [], startIndex: 0, visibleCount: 0, offsetFromRight: 0 };
+    }
+    const nextCount = clampVisibleCount(viewport.visibleCount);
+    const maxOffset = Math.max(0, data.length - nextCount);
+    const nextOffset = autoFollow ? 0 : Math.max(0, Math.min(maxOffset, viewport.offsetFromRight));
+    const startIndex = Math.max(0, data.length - nextCount - nextOffset);
+    return {
+      visibleData: data.slice(startIndex, startIndex + nextCount),
+      startIndex,
+      visibleCount: nextCount,
+      offsetFromRight: nextOffset,
+    };
+  }, [autoFollow, clampVisibleCount, data, viewport.offsetFromRight, viewport.visibleCount]);
+
+  useEffect(() => {
+    setViewport((prev) => {
+      const nextCount = clampVisibleCount(prev.visibleCount);
+      const maxOffset = Math.max(0, data.length - nextCount);
+      const nextOffset = autoFollow ? 0 : Math.max(0, Math.min(maxOffset, prev.offsetFromRight));
+      if (prev.visibleCount === nextCount && prev.offsetFromRight === nextOffset) return prev;
+      return { visibleCount: nextCount, offsetFromRight: nextOffset };
+    });
+  }, [autoFollow, clampVisibleCount, data.length]);
+
+  const { visibleData, startIndex, visibleCount } = visibleState;
 
   const { min, max } = useMemo(() => {
-    if (!data.length) return { min: 0.9, max: 1.1 };
+    if (!visibleData.length) return { min: 0.9, max: 1.1 };
     let mn = Infinity;
     let mx = -Infinity;
     for (const d of data) {
@@ -1064,7 +1172,7 @@ function CandleChart({ data }: { data: Candle[] }) {
     }
     const pad = (mx - mn) * 0.08;
     return { min: mn - pad, max: mx + pad };
-  }, [data]);
+  }, [visibleData]);
 
   const yToPx = (v: number) => {
     const usable = h - padding.top - padding.bottom;
@@ -1073,94 +1181,455 @@ function CandleChart({ data }: { data: Candle[] }) {
   };
 
   const usableW = w - padding.left - padding.right;
-  const n = data.length;
-  const step = usableW / Math.max(1, n);
-  const bodyW = Math.max(3, Math.min(12, step * 0.55));
+  const step = usableW / Math.max(1, visibleCount || 1);
+  const bodyW = Math.max(minCandleWidth, Math.min(maxCandleWidth, step * candleWidthRatio));
   const pxX = (i: number) => padding.left + i * step + step / 2;
 
   const yTicks = 4;
   const tickVals = Array.from({ length: yTicks + 1 }, (_, i) => min + ((max - min) * i) / yTicks);
 
+  const londonDateTime = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    []
+  );
+
+  const londonTime = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    []
+  );
+
+  const selectedCandle = useMemo(
+    () => (selectedCandleKey ? data.find((c) => c.t === selectedCandleKey) ?? null : null),
+    [data, selectedCandleKey]
+  );
+
+  // Candle selection filtering: use the timeframe bucket to collect tx for the selected candle.
+  const selectedTx = useMemo(() => {
+    if (!selectedCandleKey) return [];
+    const list = txByBucket.get(selectedCandleKey) ?? [];
+    return [...list].sort((a, b) => b.ts - a.ts);
+  }, [selectedCandleKey, txByBucket]);
+
+  const setTooltipForEvent = useCallback(
+    (candle: Candle, clientX: number, clientY: number) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setTooltip({
+        candle,
+        x: Math.min(rect.width - 8, Math.max(8, clientX - rect.left)),
+        y: Math.min(rect.height - 8, Math.max(8, clientY - rect.top)),
+      });
+    },
+    []
+  );
+
+  const getIndexFromClientX = useCallback(
+    (clientX: number) => {
+      if (!svgRef.current || !visibleData.length) return 0;
+      const rect = svgRef.current.getBoundingClientRect();
+      const localX = clientX - rect.left;
+      const t = (localX / rect.width) * w;
+      const localIndex = Math.max(0, Math.min(visibleData.length - 1, Math.floor((t - padding.left) / step)));
+      return startIndex + localIndex;
+    },
+    [startIndex, step, visibleData.length]
+  );
+
+  const zoomTo = useCallback(
+    (nextVisibleCount: number, pivotIndex: number) => {
+      setViewport((prev) => {
+        if (!data.length) return prev;
+        const clampedNext = clampVisibleCount(nextVisibleCount);
+        if (!clampedNext) return prev;
+
+        const currentCount = clampVisibleCount(prev.visibleCount);
+        const currentMaxOffset = Math.max(0, data.length - currentCount);
+        const currentOffset = autoFollow ? 0 : Math.max(0, Math.min(currentMaxOffset, prev.offsetFromRight));
+        const currentStart = Math.max(0, data.length - currentCount - currentOffset);
+        const safePivot = Math.max(0, Math.min(data.length - 1, pivotIndex));
+        const pivotRatio = currentCount ? (safePivot - currentStart) / currentCount : 0.5;
+        const nextStart = Math.round(safePivot - pivotRatio * clampedNext);
+        const nextMaxOffset = Math.max(0, data.length - clampedNext);
+        const nextOffset = Math.max(0, Math.min(nextMaxOffset, data.length - clampedNext - nextStart));
+        return { visibleCount: clampedNext, offsetFromRight: autoFollow ? 0 : nextOffset };
+      });
+    },
+    [autoFollow, clampVisibleCount, data.length]
+  );
+
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<SVGSVGElement>) => {
+      if (!data.length) return;
+      event.preventDefault();
+      const pivot = getIndexFromClientX(event.clientX);
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        const rect = svgRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const stepPx = rect.width / Math.max(1, visibleCount || 1);
+        const deltaCandles = event.deltaX / stepPx;
+        setAutoFollow(false);
+        setViewport((prev) => ({ ...prev, offsetFromRight: prev.offsetFromRight + deltaCandles }));
+        return;
+      }
+
+      const zoomFactor = Math.exp(event.deltaY * 0.002);
+      zoomTo(Math.round(visibleCount * zoomFactor), pivot);
+    },
+    [data.length, getIndexFromClientX, visibleCount, zoomTo]
+  );
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (!data.length) return;
+      const state = pointerStateRef.current;
+      state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (state.pointers.size === 2) {
+        const points = Array.from(state.pointers.values());
+        const dx = points[0].x - points[1].x;
+        const dy = points[0].y - points[1].y;
+        state.pinchStartDistance = Math.hypot(dx, dy);
+        state.pinchStartVisible = visibleCount;
+      }
+
+      state.startX = event.clientX;
+      state.startY = event.clientY;
+      state.panPointerId = event.pointerId;
+      state.isPanning = false;
+      state.startOffset = viewport.offsetFromRight;
+
+      if (event.pointerType !== "mouse") {
+        if (state.longPressTimer) clearTimeout(state.longPressTimer);
+        state.longPressTimer = setTimeout(() => {
+          const index = getIndexFromClientX(event.clientX);
+          const candle = data[index];
+          if (candle) {
+            setSelectedCandleKey(candle.t);
+            setTooltipForEvent(candle, event.clientX, event.clientY);
+          }
+        }, 380);
+      }
+    },
+    [data, getIndexFromClientX, setTooltipForEvent, viewport.offsetFromRight, visibleCount]
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      // Pan/zoom logic: horizontal drag pans (offsetFromRight), two-finger pinch scales visibleCount.
+      if (!data.length) return;
+      const state = pointerStateRef.current;
+      if (!state.pointers.has(event.pointerId)) return;
+      state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (state.pointers.size === 2) {
+        event.preventDefault();
+        const [p1, p2] = Array.from(state.pointers.values());
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        const scale = state.pinchStartDistance ? state.pinchStartDistance / dist : 1;
+        const midpointX = (p1.x + p2.x) / 2;
+        const pivotIndex = getIndexFromClientX(midpointX);
+        zoomTo(Math.round(state.pinchStartVisible * scale), pivotIndex);
+        return;
+      }
+
+      if (event.pointerType === "mouse") {
+        const index = getIndexFromClientX(event.clientX);
+        const candle = data[index];
+        if (candle) {
+          setHover(candle);
+          setTooltipForEvent(candle, event.clientX, event.clientY);
+        }
+      } else if (!state.isPanning) {
+        const dx = event.clientX - state.startX;
+        const dy = event.clientY - state.startY;
+        if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+          state.isPanning = true;
+          setAutoFollow(false);
+          if (svgRef.current) {
+            svgRef.current.setPointerCapture(event.pointerId);
+          }
+        } else if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          if (state.longPressTimer) clearTimeout(state.longPressTimer);
+        }
+      }
+
+      if (state.isPanning && svgRef.current) {
+        event.preventDefault();
+        const rect = svgRef.current.getBoundingClientRect();
+        const stepPx = rect.width / Math.max(1, visibleCount || 1);
+        const dx = event.clientX - state.startX;
+        const deltaCandles = dx / stepPx;
+        setViewport((prev) => ({ ...prev, offsetFromRight: state.startOffset + deltaCandles }));
+      }
+    },
+    [data, getIndexFromClientX, setTooltipForEvent, visibleCount, zoomTo]
+  );
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      const state = pointerStateRef.current;
+      if (state.longPressTimer) {
+        clearTimeout(state.longPressTimer);
+        state.longPressTimer = null;
+      }
+
+      const wasPanning = state.isPanning;
+      state.pointers.delete(event.pointerId);
+      if (state.panPointerId === event.pointerId) {
+        state.isPanning = false;
+        state.panPointerId = null;
+      }
+      if (svgRef.current) {
+        svgRef.current.releasePointerCapture(event.pointerId);
+      }
+
+      if (!wasPanning && event.pointerType !== "mouse") {
+        const index = getIndexFromClientX(event.clientX);
+        const candle = data[index];
+        if (candle) {
+          setSelectedCandleKey(candle.t);
+          setTooltipForEvent(candle, event.clientX, event.clientY);
+        }
+      }
+    },
+    [data, getIndexFromClientX, setTooltipForEvent]
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    setHover(null);
+    setTooltip(null);
+  }, []);
+
+  const handleZoomButton = useCallback(
+    (direction: "in" | "out") => {
+      if (!data.length) return;
+      const pivot = startIndex + Math.floor(visibleData.length / 2);
+      const factor = direction === "in" ? 0.8 : 1.2;
+      zoomTo(Math.round(visibleCount * factor), pivot);
+    },
+    [data.length, startIndex, visibleCount, visibleData.length, zoomTo]
+  );
+
+  const resetView = useCallback(() => {
+    setAutoFollow(true);
+    setViewport({ visibleCount: 90, offsetFromRight: 0 });
+  }, []);
+
+  const renderTooltip = tooltip?.candle ?? hover;
+  const tooltipEvents = renderTooltip ? txByBucket.get(renderTooltip.t)?.length ?? 0 : 0;
+
+  const detailRange = useMemo(() => {
+    if (!selectedCandle) return null;
+    const start = selectedCandle.t;
+    const end = start + bucketMs;
+    return { start, end };
+  }, [bucketMs, selectedCandle]);
+
+  const formatTxLabel = (label: string, deltaUC: number) => {
+    const match = label.match(/^(.*)\s\(([^)]+)\)$/);
+    if (match) return { title: match[1], action: match[2] };
+    if (deltaUC > 0) return { title: label, action: "Hold" };
+    if (deltaUC < 0) return { title: label, action: "Sold" };
+    return { title: label, action: "Flat" };
+  };
+
+
   return (
-    <div className={styles.chartWrap}>
-      {!data.length ? (
-        <div style={{ padding: 12, opacity: 0.7, fontSize: 13 }}>
-          No activity yet — hit Complete / Hold buttons to print candles.
+    <div className={styles.chartSection}>
+      <div className={styles.chartControls}>
+        <div className={styles.chartBtnRow}>
+          <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("out")} aria-label="Zoom out">
+            −
+          </button>
+          <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("in")} aria-label="Zoom in">
+            +
+          </button>
+          <button className={styles.chartBtn} type="button" onClick={resetView} aria-label="Reset view">
+            Reset
+          </button>
         </div>
-      ) : (
-        <svg
-          viewBox={`0 0 ${w} ${h}`}
-          preserveAspectRatio="none"
-          style={{ width: "100%", height: 280, display: "block" }}
-          onMouseLeave={() => setHover(null)}
-          onMouseMove={(e) => {
-            const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const t = (x / rect.width) * w;
-            const i = Math.max(0, Math.min(n - 1, Math.floor((t - padding.left) / step)));
-            setHover(data[i] ?? null);
-          }}
-        >
-          <rect x="0" y="0" width={w} height={h} rx="24" fill="rgba(0,0,0,0.10)" />
+        <label className={styles.autoFollow}>
+          <input
+            type="checkbox"
+            checked={autoFollow}
+            onChange={(event) => setAutoFollow(event.target.checked)}
+          />
+          Auto-follow latest
+        </label>
+      </div>
 
-          {/* grid + y labels */}
-          {tickVals.map((v, i) => {
-            const yy = yToPx(v);
-            return (
-              <g key={i}>
-                <line x1={padding.left} x2={w - padding.right} y1={yy} y2={yy} stroke="rgba(255,255,255,0.06)" />
-                <text x={padding.left - 10} y={yy + 4} textAnchor="end" fontSize="12" fill="rgba(255,255,255,0.45)">
-                  {v.toFixed(3)}
+      <div className={styles.chartWrap} ref={containerRef}>
+        {!data.length ? (
+          <div style={{ padding: 12, opacity: 0.7, fontSize: 13 }}>
+            No activity yet — hit Complete / Hold buttons to print candles.
+          </div>
+        ) : (
+          <svg
+            ref={svgRef}
+            className={styles.chartSvg}
+            viewBox={`0 0 ${w} ${h}`}
+            preserveAspectRatio="none"
+            style={{ width: "100%", height: 280, display: "block" }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onPointerLeave={handlePointerLeave}
+            onWheel={handleWheel}
+          >
+            <rect x="0" y="0" width={w} height={h} rx="24" fill="rgba(0,0,0,0.10)" />
+
+            {/* grid + y labels */}
+            {tickVals.map((v, i) => {
+              const yy = yToPx(v);
+              return (
+                <g key={i}>
+                  <line x1={padding.left} x2={w - padding.right} y1={yy} y2={yy} stroke="rgba(255,255,255,0.06)" />
+                  <text x={padding.left - 10} y={yy + 4} textAnchor="end" fontSize="12" fill="rgba(255,255,255,0.45)">
+                    {v.toFixed(3)}
+                  </text>
+                </g>
+              );
+            })}
+
+            {/* candles */}
+            {visibleData.map((d, i) => {
+              const x = pxX(i);
+              const yO = yToPx(d.o);
+              const yC = yToPx(d.c);
+              const yH = yToPx(d.h);
+              const yL = yToPx(d.l);
+
+              const up = d.c >= d.o;
+              const stroke = up ? "rgba(52,211,153,0.95)" : "rgba(251,113,133,0.95)";
+              const fill = up ? "rgba(52,211,153,0.55)" : "rgba(251,113,133,0.55)";
+
+              const top = Math.min(yO, yC);
+              const bot = Math.max(yO, yC);
+              const bodyH = Math.max(2, bot - top);
+
+              return (
+                <g key={d.t} opacity={selectedCandleKey === d.t ? 1 : 0.92}>
+                  <line x1={x} x2={x} y1={yH} y2={yL} stroke={stroke} strokeWidth={2} opacity={0.85} />
+                  <rect x={x - bodyW / 2} y={top} width={bodyW} height={bodyH} rx={3} fill={fill} stroke={stroke} strokeWidth={1} />
+                </g>
+              );
+            })}
+
+            {/* sparse bottom labels */}
+            {visibleData.map((d, i) => {
+              const every = Math.max(1, Math.floor(visibleData.length / 6));
+              if (i % every !== 0 && i !== visibleData.length - 1) return null;
+              const x = pxX(i);
+              const dd = new Date(d.t);
+              const label = `${dd.getMonth() + 1}/${dd.getDate()}`;
+              return (
+                <text key={`lbl-${d.t}`} x={x} y={h - 6} textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.35)">
+                  {label}
+
                 </text>
-              </g>
-            );
-          })}
+         );
+        })}
+      </svg>
+    )}
 
-          {/* candles */}
-          {data.map((d, i) => {
-            const x = pxX(i);
-            const yO = yToPx(d.o);
-            const yC = yToPx(d.c);
-            const yH = yToPx(d.h);
-            const yL = yToPx(d.l);
-
-            const up = d.c >= d.o;
-            const stroke = up ? "rgba(52,211,153,0.95)" : "rgba(251,113,133,0.95)";
-            const fill = up ? "rgba(52,211,153,0.55)" : "rgba(251,113,133,0.55)";
-
-            const top = Math.min(yO, yC);
-            const bot = Math.max(yO, yC);
-            const bodyH = Math.max(2, bot - top);
-
-            return (
-              <g key={d.t}>
-                <line x1={x} x2={x} y1={yH} y2={yL} stroke={stroke} strokeWidth={2} opacity={0.85} />
-                <rect x={x - bodyW / 2} y={top} width={bodyW} height={bodyH} rx={3} fill={fill} stroke={stroke} strokeWidth={1} />
-              </g>
-            );
-          })}
-
-          {/* sparse bottom labels */}
-          {data.map((d, i) => {
-            const every = Math.max(1, Math.floor(n / 6));
-            if (i % every !== 0 && i !== n - 1) return null;
-            const x = pxX(i);
-            const dd = new Date(d.t);
-            const label = `${dd.getMonth() + 1}/${dd.getDate()}`;
-            return (
-              <text key={`lbl-${d.t}`} x={x} y={h - 6} textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.35)">
-                {label}
-              </text>
-            );
-          })}
-        </svg>
-      )}
-
-      {hover ? (
-        <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>
-          O {hover.o.toFixed(3)} · H {hover.h.toFixed(3)} · L {hover.l.toFixed(3)} · C {hover.c.toFixed(3)}
+    {renderTooltip ? (
+      <div className={styles.chartTooltip} style={{ left: tooltip?.x ?? 24, top: tooltip?.y ?? 24 }}>
+        <div className={styles.tooltipTitle}>O/H/L/C</div>
+        <div className={styles.tooltipValue}>
+          {renderTooltip.o.toFixed(3)} · {renderTooltip.h.toFixed(3)} · {renderTooltip.l.toFixed(3)} · {renderTooltip.c.toFixed(3)}
         </div>
+        <div className={styles.tooltipMeta}>{tooltipEvents} events</div>
+      </div>
+    ) : null}
+  </div>
+
+  <div className={`${styles.detailsPanel} ${selectedCandle ? styles.detailsPanelOpen : ""}`}>
+    <div className={styles.detailsHeader}>
+      <div>
+        <div className={styles.detailsTitle}>Candle Details</div>
+        {selectedCandle && detailRange ? (
+          <div className={styles.detailsRange}>
+            {londonDateTime.format(new Date(detailRange.start))} – {londonDateTime.format(new Date(detailRange.end))}
+          </div>
+        ) : (
+          <div className={styles.detailsRange}>Tap a candle to inspect what happened.</div>
+        )}
+      </div>
+      {selectedCandle ? (
+        <button className={styles.iconBtn} type="button" onClick={() => setSelectedCandleKey(null)}>
+          ✕
+        </button>
       ) : null}
+        </div>
+        {selectedCandle ? (
+          <div className={styles.detailsBody}>
+            <div className={styles.detailsStats}>
+              <div>
+                <span>Open</span>
+                <strong>U${selectedCandle.o.toFixed(3)}</strong>
+              </div>
+              <div>
+                <span>High</span>
+                <strong>U${selectedCandle.h.toFixed(3)}</strong>
+              </div>
+              <div>
+                <span>Low</span>
+                <strong>U${selectedCandle.l.toFixed(3)}</strong>
+              </div>
+              <div>
+                <span>Close</span>
+                <strong>U${selectedCandle.c.toFixed(3)}</strong>
+              </div>
+              <div>
+                <span>MarketCap</span>
+                <strong>{Math.round(selectedCandle.c * 10000).toLocaleString()} UC</strong>
+              </div>
+            </div>
+
+            <div className={styles.txList}>
+              {selectedTx.length ? (
+                selectedTx.map((entry) => {
+                  const { title, action } = formatTxLabel(entry.label, entry.deltaUC);
+                  const isUp = entry.deltaUC > 0;
+                  const isDown = entry.deltaUC < 0;
+                  const deltaLabel = `${entry.deltaUC >= 0 ? "+" : ""}${entry.deltaUC} UC`;
+                  return (
+                    <div key={entry.id} className={styles.txItem}>
+                      <div>
+                        <div className={styles.txTitle}>
+                          {title} <span className={styles.txAction}>({action})</span>
+                        </div>
+                        <div className={styles.txTime}>{londonTime.format(new Date(entry.ts))}</div>
+                      </div>
+                      <div className={`${styles.txDelta} ${isUp ? styles.txPositive : isDown ? styles.txNegative : styles.txNeutral}`}>
+                        {deltaLabel}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className={styles.emptyTx}>No activity logged in this candle.</div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
