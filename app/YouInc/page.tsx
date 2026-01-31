@@ -734,11 +734,17 @@ function submitBuyActivity() {
                       </div>
                     </div>
                     <div className={styles.cardActions}>
-                      <button className={styles.actionPrimary} onClick={() => applyDelta("goal", "Goal complete", +400)} type="button">
+                    <button
+                        className={styles.actionPrimary}
+                        onClick={() => applyDelta("goal", `${g.title} (Goal · Complete)`, +400)}
+                        type="button">
                         Complete <span className={styles.delta}>+400 UC</span>
                       </button>
-                      <button className={styles.actionDanger} onClick={() => applyDelta("goal", "Goal failed", -200)} type="button">
-                        Failed <span className={styles.delta}>-200 UC</span>
+                      <button
+                        className={styles.actionDanger}
+                        onClick={() => applyDelta("goal", `${g.title} (Goal · Failed)`, -200)}
+                        type="button">
+                         Failed <span className={styles.delta}>-200 UC</span>
                       </button>
                       <button className={styles.iconBtn} onClick={() => removeItem("goals", g.id)} title="Remove" type="button">
                         ✕
@@ -767,11 +773,20 @@ function submitBuyActivity() {
                       </div>
                     </div>
                     <div className={styles.cardActions}>
-                      <button className={styles.actionPrimary} onClick={() => applyDelta("good", "Good habit hold", +100)} type="button">
-                        Hold <span className={styles.delta}>+100 UC</span>
+                    <button
+                        className={styles.actionPrimary}
+                        onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +100)}
+                        type="button"
+                      >
+                        
+                            Hold <span className={styles.delta}>+100 UC</span>
                       </button>
-                      <button className={styles.actionDanger} onClick={() => applyDelta("good", "Good habit sold", -50)} type="button">
-                        Sold <span className={styles.delta}>-50 UC</span>
+                      <button
+                        className={styles.actionDanger}
+                        onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -50)}
+                        type="button"
+                      >
+                              Sold <span className={styles.delta}>-50 UC</span>
                       </button>
                       <button className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove" type="button">
                         ✕
@@ -797,11 +812,20 @@ function submitBuyActivity() {
                       </div>
                     </div>
                     <div className={styles.cardActions}>
-                      <button className={styles.actionPrimary} onClick={() => applyDelta("bad", "Bad habit hold", +100)} type="button">
+                    <button
+                        className={styles.actionPrimary}
+                        onClick={() => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +100)}
+                        type="button"
+                      >
+                        
                         Hold <span className={styles.delta}>+100 UC</span>
                       </button>
-                      <button className={styles.actionDanger} onClick={() => applyDelta("bad", "Bad habit sold", -50)} type="button">
-                        Sold <span className={styles.delta}>-50 UC</span>
+                      <button
+                        className={styles.actionDanger}
+                        onClick={() => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -50)}
+                        type="button"
+                      >
+                          Sold <span className={styles.delta}>-50 UC</span>
                       </button>
                       <button className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove" type="button">
                         ✕
@@ -827,11 +851,19 @@ function submitBuyActivity() {
                       </div>
                     </div>
                     <div className={styles.cardActions}>
-                      <button className={styles.actionPrimary} onClick={() => applyDelta("addiction", "Addiction hold", +200)} type="button">
-                        Hold <span className={styles.delta}>+200 UC</span>
+                    <button
+                        className={styles.actionPrimary}
+                        onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200)}
+                        type="button"
+                      >
+                            Hold <span className={styles.delta}>+200 UC</span>
                       </button>
-                      <button className={styles.actionDanger} onClick={() => applyDelta("addiction", "Addiction sold", -100)} type="button">
-                        Sold <span className={styles.delta}>-100 UC</span>
+                      <button
+                        className={styles.actionDanger}
+                        onClick={() => applyDelta("addiction", `${a.title} (Addiction · Sold)`, -100)}
+                        type="button"
+                      >
+                            Sold <span className={styles.delta}>-100 UC</span>
                       </button>
                       <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button">
                         ✕
@@ -1398,7 +1430,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
         svgRef.current.releasePointerCapture(event.pointerId);
       }
 
-      if (!wasPanning && event.pointerType !== "mouse") {
+      if (!wasPanning) {
         const index = getIndexFromClientX(event.clientX);
         const candle = data[index];
         if (candle) {
@@ -1443,10 +1475,19 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   const formatTxLabel = (label: string, deltaUC: number) => {
     const match = label.match(/^(.*)\s\(([^)]+)\)$/);
     if (match) return { title: match[1], action: match[2] };
+    const lower = label.toLowerCase();
+    if (lower.includes("good habit") && lower.includes("hold")) return { title: label, action: "Good habit · Hold" };
+    if (lower.includes("good habit") && lower.includes("sold")) return { title: label, action: "Good habit · Sold" };
+    if (lower.includes("bad habit") && lower.includes("hold")) return { title: label, action: "Bad habit · Hold" };
+    if (lower.includes("bad habit") && lower.includes("sold")) return { title: label, action: "Bad habit · Sold" };
+    if (lower.includes("addiction") && lower.includes("hold")) return { title: label, action: "Addiction · Hold" };
+    if (lower.includes("addiction") && lower.includes("sold")) return { title: label, action: "Addiction · Sold" };
     if (deltaUC > 0) return { title: label, action: "Hold" };
     if (deltaUC < 0) return { title: label, action: "Sold" };
     return { title: label, action: "Flat" };
   };
+
+  
 
 
   return (
