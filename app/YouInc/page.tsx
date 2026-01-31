@@ -1,11 +1,11 @@
 "use client";
 
 import { applyTaxes, getUkOffsetMinutes, isMarketOpen, type DeltaKind } from "./rules";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./youinc.module.css";
 import { useAuth } from "../providers";
 import { useRouter } from "next/navigation";
-import { doc, onSnapshot, setDoc, getDoc } from "firebase/firestore";
+import { doc, onSnapshot, runTransaction, setDoc, getDoc } from "firebase/firestore";
 import { db } from "../../lib/firebase";
 
 
@@ -53,8 +53,7 @@ type Store = {
 
 type Candle = { t: number; o: number; h: number; l: number; c: number };
 
-const [storeError, setStoreError] = useState<string | null>(null);
-const [hydrateAttempt, setHydrateAttempt] = useState(0);
+
 
 function stripUndefined<T>(value: T): T {
   if (Array.isArray(value)) {
@@ -145,6 +144,54 @@ function buildCandles(startCapUC: number, txAsc: Tx[], bucketMs: number, lookbac
   return candles;
 }
 
+// --- UK hour-bucket helpers for decay (DST-safe via Europe/London offset) ---
+const HOUR_MS = 60 * 60 * 1000;
+
+function getUkWallMs(now: Date) {
+  return now.getTime() + getUkOffsetMinutes(now) * 60 * 1000;
+}
+
+function ukWallMsToUtcMs(ukWallMs: number) {
+  let guess = ukWallMs - getUkOffsetMinutes(new Date()) * 60 * 1000;
+  for (let i = 0; i < 2; i += 1) {
+    const offsetMinutes = getUkOffsetMinutes(new Date(guess));
+    const nextGuess = ukWallMs - offsetMinutes * 60 * 1000;
+    if (nextGuess === guess) break;
+    guess = nextGuess;
+  }
+  return guess;
+}
+
+function getUkHourBucketStartMs(now = new Date()) {
+  const ukNowMs = getUkWallMs(now);
+  const bucketUkMs = Math.floor(ukNowMs / HOUR_MS) * HOUR_MS;
+  return ukWallMsToUtcMs(bucketUkMs);
+}
+
+function getNextUkHourBucketStartMs(now = new Date()) {
+  const ukNowMs = getUkWallMs(now);
+  const bucketUkMs = Math.floor(ukNowMs / HOUR_MS) * HOUR_MS + HOUR_MS;
+  return ukWallMsToUtcMs(bucketUkMs);
+}
+
+function countOpenBucketsBetween(lastBucketUtcMs: number, currentBucketUtcMs: number) {
+  if (currentBucketUtcMs <= lastBucketUtcMs) return 0;
+
+  const lastBucketUkMs = getUkWallMs(new Date(lastBucketUtcMs));
+  const currentBucketUkMs = getUkWallMs(new Date(currentBucketUtcMs));
+  let openBuckets = 0;
+
+  for (let ukMs = lastBucketUkMs + HOUR_MS; ukMs <= currentBucketUkMs; ukMs += HOUR_MS) {
+    const bucketUtcMs = ukWallMsToUtcMs(ukMs);
+    if (isMarketOpen(new Date(bucketUtcMs))) {
+      openBuckets += 1;
+    }
+  }
+
+  return openBuckets;
+}
+
+
 export default function YouIncPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
@@ -178,6 +225,8 @@ export default function YouIncPage() {
   const hydratedRef = useRef(false); // got at least one snapshot
   const suppressWriteRef = useRef(true); // block writes until hydrated
   const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const decayInitRef = useRef(false);
+  const decayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ------- Modal form state -------
   const [goalTitle, setGoalTitle] = useState("");
@@ -206,6 +255,7 @@ export default function YouIncPage() {
   useEffect(() => {
     hydratedRef.current = false;
     suppressWriteRef.current = true;
+    
 
     if (writeTimerRef.current) {
       clearTimeout(writeTimerRef.current);
@@ -267,16 +317,13 @@ export default function YouIncPage() {
                 goodHabits: Array.isArray(data.goodHabits) ? (data.goodHabits as GoodHabit[]) : prev.goodHabits,
                 badHabits: Array.isArray(data.badHabits) ? (data.badHabits as BadHabit[]) : prev.badHabits,
                 addictions: Array.isArray(data.addictions) ? (data.addictions as Addiction[]) : prev.addictions,
+                lastDecayHourTs: typeof data.lastDecayHourTs === "number" ? data.lastDecayHourTs : prev.lastDecayHourTs,
               }));
             }
 
-            hydratedRef.current = false;
-            suppressWriteRef.current = true;
-            setStoreError("We couldn't sync your data. Check your connection and try again.");
-            if (!cancelled) {
-              retryTimer = setTimeout(() => setHydrateAttempt((v) => v + 1), 3000);
-            }            setStoreError(null);
-
+            hydratedRef.current = true;
+            suppressWriteRef.current = false;
+            setStoreError(null);
           },
           (err) => {
             console.error("onSnapshot error:", err);
@@ -330,49 +377,116 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
 
 
 // 🧊 Decay: -5 UC every hour for 16 hours, only when market is open (UK time)
+const runDecayCatchUp = useCallback(async () => {
+  const now = new Date();
+  const currentBucketMs = getUkHourBucketStartMs(now);
 
+  if (storeDocRef) {
+    try {
+      await runTransaction(db, async (transaction) => {
+        const snap = await transaction.get(storeDocRef);
+        const data = (snap.exists() ? snap.data() : {}) as Partial<Store>;
+
+        const lastBucketMs = typeof data.lastDecayHourTs === "number" ? data.lastDecayHourTs : undefined;
+        const marketCapUC = typeof data.marketCapUC === "number" ? data.marketCapUC : 10000;
+        const tx = Array.isArray(data.tx) ? (data.tx as Tx[]) : [];
+
+        if (lastBucketMs === undefined) {
+          transaction.set(storeDocRef, { lastDecayHourTs: currentBucketMs }, { merge: true });
+          return;
+        }
+
+        const openBuckets = countOpenBucketsBetween(lastBucketMs, currentBucketMs);
+        const update: Partial<Store> = { lastDecayHourTs: currentBucketMs };
+
+        if (openBuckets > 0) {
+          const deltaUC = -5 * openBuckets;
+          const { effectiveDeltaUC } = applyTaxes("decay", deltaUC, marketCapUC);
+          const nextCap = Math.max(0, marketCapUC + effectiveDeltaUC);
+          const decayTx: Tx = {
+            id: uid(),
+            ts: Date.now(),
+            deltaUC: effectiveDeltaUC,
+            label: `Decay x${openBuckets}`,
+          };
+
+          update.marketCapUC = nextCap;
+          update.tx = [decayTx, ...tx].slice(0, 2000);
+        }
+
+        transaction.set(storeDocRef, stripUndefined(update), { merge: true });
+      });
+      return;
+    } catch (error) {
+      console.error("Decay transaction failed:", error);
+    }
+  }
+
+  setStore((prev) => {
+    const lastBucketMs = prev.lastDecayHourTs;
+    if (lastBucketMs === undefined) {
+      return { ...prev, lastDecayHourTs: currentBucketMs };
+    }
+
+    const openBuckets = countOpenBucketsBetween(lastBucketMs, currentBucketMs);
+    const nextState: Store = { ...prev, lastDecayHourTs: currentBucketMs };
+
+    if (openBuckets > 0) {
+      const deltaUC = -5 * openBuckets;
+      const { effectiveDeltaUC } = applyTaxes("decay", deltaUC, prev.marketCapUC);
+      const decayTx: Tx = {
+        id: uid(),
+        ts: Date.now(),
+        deltaUC: effectiveDeltaUC,
+        label: `Decay x${openBuckets}`,
+      };
+
+      nextState.marketCapUC = Math.max(0, prev.marketCapUC + effectiveDeltaUC);
+      nextState.tx = [decayTx, ...prev.tx].slice(0, 2000);
+    }
+
+    return nextState;
+  });
+}, [storeDocRef]);
+
+// 🧊 Decay scheduler: run once after hydration and after every UK-hour boundary
   useEffect(() => {
-  // If auth isn’t ready yet, don’t schedule anything.
-  // (This prevents weird scheduling during redirects / refresh)
-  if (loading || !user) return;
+    if (loading || !user) return;
 
-  let intervalId: ReturnType<typeof setInterval> | null = null;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-
-  function msToNextUkHour(now = new Date()) {
-    const offsetMinutes = getUkOffsetMinutes(now);
-    const ukNowMs = now.getTime() + offsetMinutes * 60 * 1000;
-    const hourMs = 60 * 60 * 1000;
-    const nextUkHourMs = Math.floor(ukNowMs / hourMs) * hourMs + hourMs;
-    return Math.max(0, nextUkHourMs - ukNowMs);
-  }
-
-  function runHourlyDecayTick() {
-    // Only decay when market is open (your rules.ts defines 04:00–11:59 as CLOSED)
-    if (!isMarketOpen(new Date())) return;
-    applyDelta("decay", "Decay", -5);
-  }
+    let cancelled = false;
 
   function schedule() {
    
-    timeoutId = setTimeout(() => {
-      // First tick exactly on the hour
-      runHourlyDecayTick();
+    const scheduleNextTick = () => {
+      if (decayTimerRef.current) {
+        clearTimeout(decayTimerRef.current);
+      }
+      const now = new Date();
+      const nextBoundaryMs = getNextUkHourBucketStartMs(now);
+      const delay = Math.max(0, nextBoundaryMs - now.getTime() + 2000);
 
-      // Then every hour on the hour
-      intervalId = setInterval(runHourlyDecayTick, 60 * 60 * 1000);
-    }, msToNextUkHour());
-  }
+  decayTimerRef.current = setTimeout(async () => {
+        if (cancelled) return;
+        await runDecayCatchUp();
+        scheduleNextTick();
+      }, delay);
+    };
 
-  schedule();
+    if (!decayInitRef.current) {
+      decayInitRef.current = true;
+      void runDecayCatchUp();
+    }
 
-  return () => {
-    if (timeoutId) clearTimeout(timeoutId);
-    if (intervalId) clearInterval(intervalId);
-  };
-  // We intentionally only depend on auth readiness.
-  // applyDelta is a normal function (not a hook), so do NOT put it in deps.
-}, [loading, user]);
+    scheduleNextTick();
+
+    return () => {
+      cancelled = true;
+      if (decayTimerRef.current) {
+        clearTimeout(decayTimerRef.current);
+        decayTimerRef.current = null;
+      }
+    };
+  }, [loading, runDecayCatchUp, user]);
 
 function submitBuyActivity() {
   const a = buyActivity.trim();
