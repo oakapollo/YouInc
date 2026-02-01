@@ -2,22 +2,52 @@
 @tailwind components;
 @tailwind utilities;
 
-html,
-body {
-  background: #070a12;
+:root {
+  color-scheme: dark;
+  --bg-1: #0a0f1f;
+  --bg-2: #101728;
+  --bg-3: #0b1224;
+  --accent: #7c3aed;
+  --accent-soft: rgba(124, 58, 237, 0.18);
+  --mint: #2dd4bf;
+}
+
+* {
+  box-sizing: border-box;
 }
 
 
-html, body {
+html,
+body {
   height: 100%;
+  margin: 0;
+}
+
+body {
+  background: radial-gradient(1200px 520px at 15% 15%, rgba(124, 58, 237, 0.18), transparent 55%),
+    radial-gradient(900px 520px at 90% 10%, rgba(45, 212, 191, 0.15), transparent 55%),
+    linear-gradient(145deg, var(--bg-1), var(--bg-2));
+  color: rgba(255, 255, 255, 0.92);
+  font-family: "Inter", "SF Pro Text", system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
   overscroll-behavior: none;
   -webkit-text-size-adjust: 100%;
   touch-action: pan-y;
 }
 
-button, a, input, textarea {
+button,
+a,
+input,
+textarea {
   -webkit-tap-highlight-color: transparent;
 }
-input, textarea {
-  font-size: 16px; /* prevents iOS zoom on focus */
+input,
+textarea {
+  font-size: 16px;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: #fff;
 }
