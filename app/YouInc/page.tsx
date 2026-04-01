@@ -493,6 +493,10 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
     };
   }, [loading, runDecayCatchUp, user]);
 
+  function getPreviewDelta(kind: DeltaKind, deltaUC: number) {
+    return applyTaxes(kind, deltaUC, store.marketCapUC).effectiveDeltaUC;
+  }
+
 function submitBuyActivity() {
   const a = buyActivity.trim();
   if (!a) return;
@@ -779,8 +783,7 @@ function submitBuyActivity() {
                         type="button"
                       >
                         
-                            Hold <span className={styles.delta}>+100 UC</span>
-                      </button>
+                        Hold <span className={styles.delta}>+{getPreviewDelta("good", 100)} UC</span>                      </button>
                       <button
                         className={styles.actionDanger}
                         onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -50)}
@@ -818,7 +821,7 @@ function submitBuyActivity() {
                         type="button"
                       >
                         
-                        Hold <span className={styles.delta}>+100 UC</span>
+                        Hold <span className={styles.delta}>+{getPreviewDelta("bad", 100)} UC</span>
                       </button>
                       <button
                         className={styles.actionDanger}
@@ -856,8 +859,7 @@ function submitBuyActivity() {
                         onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200)}
                         type="button"
                       >
-                            Hold <span className={styles.delta}>+200 UC</span>
-                      </button>
+                        Hold <span className={styles.delta}>+{getPreviewDelta("addiction", 200)} UC</span>                      </button>
                       <button
                         className={styles.actionDanger}
                         onClick={() => applyDelta("addiction", `${a.title} (Addiction · Sold)`, -100)}
