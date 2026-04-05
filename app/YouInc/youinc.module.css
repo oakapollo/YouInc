@@ -4,7 +4,7 @@
   background: radial-gradient(1200px 600px at 20% 10%, rgba(124, 58, 237, 0.18), transparent 55%),
   radial-gradient(900px 520px at 90% 15%, rgba(45, 212, 191, 0.16), transparent 60%),
   linear-gradient(160deg, #0a0f1f 0%, #0d1529 50%, #0b1224 100%);
-  overscroll-behavior-y: none;
+  overscroll-behavior-y: auto;
   
 }
 
@@ -365,7 +365,7 @@
 }
 
 .chartSvg {
-  touch-action: manipulation;
+  touch-action: pan-y;
   cursor: crosshair;
 }
 
