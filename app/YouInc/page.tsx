@@ -659,6 +659,24 @@ function submitBuyActivity() {
   const currentSectionIndex = useMemo(() => SECTION_ORDER.indexOf(tab), [tab]);
   const currentSectionTitle = SECTION_TITLES[tab];
 
+  const pageScrollStyle: React.CSSProperties = {
+    minHeight: "100dvh",
+    overflowY: "auto",
+    overflowX: "hidden",
+    WebkitOverflowScrolling: "touch",
+  };
+
+  const shellScrollStyle: React.CSSProperties = {
+    minHeight: "100%",
+    overflow: "visible",
+    paddingBottom: 32,
+  };
+
+  const panelStyle: React.CSSProperties = {
+    paddingTop: 18,
+    overflow: "visible",
+  };
+
   function resetFormForTab(nextTab: TabKey) {
     if (nextTab === "goals") {
       setGoalTitle("");
@@ -777,7 +795,7 @@ function submitBuyActivity() {
 
   // ✅ NOW early returns are safe (ALL hooks above always ran)
   if (loading) {
-    return <div className={styles.page}>Loading…</div>;
+    return <div className={styles.page} style={pageScrollStyle}>Loading…</div>;
   }
   if (!user) {
     return null;
@@ -842,7 +860,7 @@ function submitBuyActivity() {
       <div className={styles.glowB} />
       <div className={styles.glowC} />
 
-      <div className={styles.shell}>
+      <div className={styles.shell} style={shellScrollStyle}>
         <header className={styles.header}>
           <div className={styles.brand}>
             <div className={styles.logo} />
@@ -867,7 +885,7 @@ function submitBuyActivity() {
         
         <section
           className={styles.panel}
-          style={{ paddingTop: 18 }}
+          style={panelStyle}
         >
           <div
             style={{
