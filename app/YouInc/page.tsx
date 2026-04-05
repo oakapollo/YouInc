@@ -202,7 +202,7 @@ export default function YouIncPage() {
 
   const [tab, setTab] = useState<TabKey>("goals");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [tf, setTf] = useState<"4h" | "8h" | "1d" | "1w">("1d");
+  const [tf, setTf] = useState<"1d" | "3d" | "1w" | "1m">("1d");
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const [buyActivity, setBuyActivity] = useState("");
 
@@ -512,9 +512,9 @@ function submitBuyActivity() {
   const txAsc = useMemo(() => [...store.tx].sort((a, b) => a.ts - b.ts), [store.tx]);
 
   const candles = useMemo(() => {
-    if (tf === "4h") return buildCandles(store.marketCapUC, txAsc, 4 * 60 * 60 * 1000, 90);
-    if (tf === "8h") return buildCandles(store.marketCapUC, txAsc, 8 * 60 * 60 * 1000, 90);
+    if (tf === "3d") return buildCandles(store.marketCapUC, txAsc, 3 * 24 * 60 * 60 * 1000, 40);
     if (tf === "1w") return buildCandles(store.marketCapUC, txAsc, 7 * 24 * 60 * 60 * 1000, 26);
+    if (tf === "1m") return buildCandles(store.marketCapUC, txAsc, 30 * 24 * 60 * 60 * 1000, 18);
     return buildCandles(store.marketCapUC, txAsc, 24 * 60 * 60 * 1000, 60);
   }, [tf, store.marketCapUC, txAsc, nowTick]);
 
@@ -917,17 +917,17 @@ function submitBuyActivity() {
             </button>
 
             {/* TF buttons */}
-            <button className={`${styles.tfBtn} ${tf === "4h" ? styles.tfBtnOn : ""}`} onClick={() => setTf("4h")} type="button">
-              4H
-            </button>
-            <button className={`${styles.tfBtn} ${tf === "8h" ? styles.tfBtnOn : ""}`} onClick={() => setTf("8h")} type="button">
-              8H
-            </button>
             <button className={`${styles.tfBtn} ${tf === "1d" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1d")} type="button">
               1D
             </button>
+            <button className={`${styles.tfBtn} ${tf === "3d" ? styles.tfBtnOn : ""}`} onClick={() => setTf("3d")} type="button">
+              3D
+            </button>
             <button className={`${styles.tfBtn} ${tf === "1w" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1w")} type="button">
               1W
+            </button>
+            <button className={`${styles.tfBtn} ${tf === "1m" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1m")} type="button">
+              1M
             </button>
           </div>
         </section>
@@ -1088,7 +1088,7 @@ function submitBuyActivity() {
 }
 
 /* ---------------- CHART ---------------- */
-function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timeframe: "4h" | "8h" | "1d" | "1w" }) {
+function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timeframe: "1d" | "3d" | "1w" | "1m" }) {
 
 
   const [hover, setHover] = useState<Candle | null>(null);
@@ -1134,9 +1134,9 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   }, []);
 
   const bucketMs = useMemo(() => {
-    if (timeframe === "4h") return 4 * 60 * 60 * 1000;
-    if (timeframe === "8h") return 8 * 60 * 60 * 1000;
+    if (timeframe === "3d") return 3 * 24 * 60 * 60 * 1000;
     if (timeframe === "1w") return 7 * 24 * 60 * 60 * 1000;
+    if (timeframe === "1m") return 30 * 24 * 60 * 60 * 1000;
     return 24 * 60 * 60 * 1000;
   }, [timeframe]);
 
@@ -1243,6 +1243,43 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
         minute: "2-digit",
       }),
     []
+  );
+
+  const formatXAxisLabel = useCallback(
+    (ts: number) => {
+      const date = new Date(ts);
+
+      if (timeframe === "1m") {
+        return new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Europe/London",
+          month: "short",
+          year: "2-digit",
+        }).format(date);
+      }
+
+      if (timeframe === "1w") {
+        return new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Europe/London",
+          day: "2-digit",
+          month: "short",
+        }).format(date);
+      }
+
+      if (timeframe === "3d") {
+        return new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Europe/London",
+          day: "2-digit",
+          month: "short",
+        }).format(date);
+      }
+
+      return new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        day: "2-digit",
+        month: "short",
+      }).format(date);
+    },
+    [timeframe]
   );
 
   const selectedCandle = useMemo(
@@ -1579,8 +1616,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
               const every = Math.max(1, Math.floor(visibleData.length / 6));
               if (i % every !== 0 && i !== visibleData.length - 1) return null;
               const x = pxX(i);
-              const dd = new Date(d.t);
-              const label = `${dd.getMonth() + 1}/${dd.getDate()}`;
+              const label = formatXAxisLabel(d.t);
               return (
                 <text key={`lbl-${d.t}`} x={x} y={h - 6} textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.35)">
                   {label}
