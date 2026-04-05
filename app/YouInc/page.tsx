@@ -836,6 +836,15 @@ function submitBuyActivity() {
     if (kind === "addictions") setStore((s) => ({ ...s, addictions: s.addictions.filter((x) => x.id !== id) }));
   }
 
+  function applyAddictionSold(addiction: Addiction) {
+    const state = addictionChargeMap.get(addiction.id) ?? getAddictionChargeState(addiction.title, store.tx, Date.now());
+    applyDelta("addiction", getAddictionSoldLabel(addiction.title), -state.currentCharge);
+  }
+
+  function resetAddictionCharges(addiction: Addiction) {
+    applyDelta("addiction", getAddictionResetLabel(addiction.title), 0);
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.glowA} />
@@ -1047,35 +1056,57 @@ function submitBuyActivity() {
                 {store.addictions.length === 0 ? (
                   <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
                 ) : (
-                  store.addictions.map((a) => (
-                    <div key={a.id} className={styles.card}>
-                      <div className={styles.cardMain}>
-                        <div className={styles.cardTitle}>{a.title}</div>
-                        <div className={styles.metaRow}>
-                          <span className={styles.metaPill}>No expiry</span>
+                  store.addictions.map((a) => {
+                    const chargeState = addictionChargeMap.get(a.id) ?? getAddictionChargeState(a.title, store.tx, Date.now());
+                    const soldPenalty = Math.abs(getPreviewDelta("addiction", -chargeState.currentCharge));
+                    const resetEnabled = chargeState.currentCharge > ADDICTION_BASE_CHARGE || chargeState.lastSoldTs !== null;
+                    const reductionText =
+                      chargeState.nextReductionAt && chargeState.nextReductionCharge !== null
+                        ? `Next reduction in ${formatDurationShort(chargeState.nextReductionAt - Date.now())} → -${chargeState.nextReductionCharge} UC`
+                        : "Base penalty active";
+
+                    return (
+                      <div key={a.id} className={styles.card}>
+                        <div className={styles.cardMain}>
+                          <div className={styles.cardTitle}>{a.title}</div>
+                          <div className={styles.metaRow}>
+                            <span className={styles.metaPill}>No expiry</span>
+                            <span className={styles.metaPill}>Current sold: -{soldPenalty} UC</span>
+                            <span className={styles.metaPill}>{reductionText}</span>
+                            {chargeState.reachedMax ? <span className={styles.metaPill}>Max escalation</span> : null}
+                          </div>
+                        </div>
+                        <div className={styles.cardActions}>
+                          <button
+                            className={styles.actionPrimary}
+                            onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200)}
+                            type="button"
+                          >
+                            Hold <span className={styles.delta}>+{getPreviewDelta("addiction", 200)} UC</span>
+                          </button>
+                          <button
+                            className={styles.actionDanger}
+                            onClick={() => applyAddictionSold(a)}
+                            type="button"
+                          >
+                            Sold <span className={styles.delta}>-{soldPenalty} UC</span>
+                          </button>
+                          <button
+                            className={styles.ghostBtn}
+                            onClick={() => resetAddictionCharges(a)}
+                            type="button"
+                            disabled={!resetEnabled}
+                            title="Reset escalation back to base penalty"
+                          >
+                            Reset charges
+                          </button>
+                          <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button">
+                            ✕
+                          </button>
                         </div>
                       </div>
-                      <div className={styles.cardActions}>
-                        <button
-                          className={styles.actionPrimary}
-                          onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200)}
-                          type="button"
-                        >
-                          Hold <span className={styles.delta}>+{getPreviewDelta("addiction", 200)} UC</span>
-                        </button>
-                        <button
-                          className={styles.actionDanger}
-                          onClick={() => applyDelta("addiction", `${a.title} (Addiction · Sold)`, -100)}
-                          type="button"
-                        >
-                          Sold <span className={styles.delta}>-100 UC</span>
-                        </button>
-                        <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button">
-                          ✕
-                        </button>
-                      </div>
-                    </div>
-                  ))
+                    );
+                  })
                 )}
               </div>
             </div>
