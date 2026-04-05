@@ -492,3 +492,24 @@
   min-width: 100%;
   scroll-snap-align: start;
 }
+
+.todayChange {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 12px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  white-space: nowrap;
+}
+
+.todayChangePositive {
+  color: rgba(52, 211, 153, 0.95);
+}
+
+.todayChangeNegative {
+  color: rgba(251, 113, 133, 0.95);
+}
