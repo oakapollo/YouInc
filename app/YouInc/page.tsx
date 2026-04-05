@@ -15,6 +15,15 @@ import { db } from "../../lib/firebase";
 
 type TabKey = "goals" | "good" | "bad" | "addictions";
 
+const SECTION_ORDER: TabKey[] = ["goals", "good", "bad", "addictions"];
+
+const SECTION_TITLES: Record<TabKey, string> = {
+  goals: "Goals",
+  good: "Good Habits",
+  bad: "Bad Habits",
+  addictions: "Addictions",
+};
+
 type Goal = { id: string; title: string; expiry: string; createdAt: number };
 
 type GoodHabit = {
@@ -291,6 +300,8 @@ export default function YouIncPage() {
   const [tab, setTab] = useState<TabKey>("goals");
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [tf, setTf] = useState<"1d" | "3d" | "1w" | "1m">("1d");
+  const sectionScrollerRef = useRef<HTMLDivElement | null>(null);
+  const sectionSnapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const [buyActivity, setBuyActivity] = useState("");
 
@@ -645,6 +656,9 @@ function submitBuyActivity() {
     return "Add Addiction";
   }, [tab]);
 
+  const currentSectionIndex = useMemo(() => SECTION_ORDER.indexOf(tab), [tab]);
+  const currentSectionTitle = SECTION_TITLES[tab];
+
   function resetFormForTab(nextTab: TabKey) {
     if (nextTab === "goals") {
       setGoalTitle("");
@@ -663,10 +677,51 @@ function submitBuyActivity() {
     }
   }
 
-  function switchTab(next: TabKey) {
+  function scrollToSection(next: TabKey, behavior: ScrollBehavior = "smooth") {
+    const container = sectionScrollerRef.current;
+    if (!container) return;
+
+    const index = SECTION_ORDER.indexOf(next);
+    if (index < 0) return;
+
+    container.scrollTo({
+      left: index * container.clientWidth,
+      behavior,
+    });
+  }
+
+  function switchTab(next: TabKey, behavior: ScrollBehavior = "smooth") {
     setTab(next);
     setIsModalOpen(false);
     resetFormForTab(next);
+    requestAnimationFrame(() => scrollToSection(next, behavior));
+  }
+
+  function stepSection(direction: -1 | 1) {
+    const nextIndex = Math.max(0, Math.min(SECTION_ORDER.length - 1, currentSectionIndex + direction));
+    const nextTab = SECTION_ORDER[nextIndex];
+    if (nextTab) {
+      switchTab(nextTab);
+    }
+  }
+
+  function handleSectionScroll() {
+    const container = sectionScrollerRef.current;
+    if (!container) return;
+
+    if (sectionSnapTimeoutRef.current) clearTimeout(sectionSnapTimeoutRef.current);
+
+    sectionSnapTimeoutRef.current = setTimeout(() => {
+      const index = Math.max(
+        0,
+        Math.min(SECTION_ORDER.length - 1, Math.round(container.scrollLeft / Math.max(container.clientWidth, 1)))
+      );
+      const nextTab = SECTION_ORDER[index];
+      if (nextTab && nextTab !== tab) {
+        setTab(nextTab);
+        setIsModalOpen(false);
+      }
+    }, 60);
   }
 
   function toggleDow(day: number) {
@@ -687,6 +742,16 @@ function submitBuyActivity() {
     }
     return addictionTitle.trim().length > 0;
   }
+
+  useEffect(() => {
+    requestAnimationFrame(() => scrollToSection(tab, "auto"));
+    return () => {
+      if (sectionSnapTimeoutRef.current) {
+        clearTimeout(sectionSnapTimeoutRef.current);
+        sectionSnapTimeoutRef.current = null;
+      }
+    };
+  }, [tab]);
 
   // ✅ Firestore: debounced write
   useEffect(() => {
@@ -800,178 +865,196 @@ function submitBuyActivity() {
 
         {storeError ? <div className={styles.syncWarning}>{storeError}</div> : null}
         
-        <nav className={styles.tabs}>
-          <button className={`${styles.tab} ${tab === "goals" ? styles.tabActive : ""}`} onClick={() => switchTab("goals")} type="button">
-            Goals
-          </button>
-          <button className={`${styles.tab} ${tab === "good" ? styles.tabActive : ""}`} onClick={() => switchTab("good")} type="button">
-            Good Habits
-          </button>
-          <button className={`${styles.tab} ${tab === "bad" ? styles.tabActive : ""}`} onClick={() => switchTab("bad")} type="button">
-            Bad Habits
-          </button>
-          <button
-            className={`${styles.tab} ${tab === "addictions" ? styles.tabActive : ""}`}
-            onClick={() => switchTab("addictions")}
-            type="button"
+        <section
+          className={styles.panel}
+          style={{ paddingTop: 18 }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              marginBottom: 16,
+            }}
           >
-            Addictions
-          </button>
-        </nav>
+            <button
+              className={styles.iconBtn}
+              onClick={() => stepSection(-1)}
+              type="button"
+              aria-label="Previous section"
+              disabled={currentSectionIndex === 0}
+              style={{ minWidth: 44, opacity: currentSectionIndex === 0 ? 0.45 : 1 }}
+            >
+              {"<"}
+            </button>
 
-        {/* TAB CONTENT */}
-        <section className={styles.panel}>
-          {tab === "goals" && (
-            <div className={styles.list}>
-              {store.goals.length === 0 ? (
-                <EmptyState text="No goals yet. Add one and give it an expiry date." />
-              ) : (
-                store.goals.map((g) => (
-                  <div key={g.id} className={styles.card}>
-                    <div className={styles.cardMain}>
-                      <div className={styles.cardTitle}>{g.title}</div>
-                      <div className={styles.metaRow}>
-                        <span className={styles.metaPill}>Expiry: {g.expiry}</span>
-                      </div>
-                    </div>
-                    <div className={styles.cardActions}>
-                    <button
-                        className={styles.actionPrimary}
-                        onClick={() => applyDelta("goal", `${g.title} (Goal · Complete)`, +400)}
-                        type="button">
-                        Complete <span className={styles.delta}>+400 UC</span>
-                      </button>
-                      <button
-                        className={styles.actionDanger}
-                        onClick={() => applyDelta("goal", `${g.title} (Goal · Failed)`, -200)}
-                        type="button">
-                         Failed <span className={styles.delta}>-200 UC</span>
-                      </button>
-                      <button className={styles.iconBtn} onClick={() => removeItem("goals", g.id)} title="Remove" type="button">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
+            <div
+              style={{
+                fontSize: 18,
+                fontWeight: 700,
+                textAlign: "center",
+                flex: 1,
+              }}
+            >
+              {currentSectionTitle}
             </div>
-          )}
 
-          {tab === "good" && (
-            <div className={styles.list}>
-              {store.goodHabits.length === 0 ? (
-                <EmptyState text="No good habits yet. Add a habit and choose frequency." />
-              ) : (
-                store.goodHabits.map((h) => (
-                  <div key={h.id} className={styles.card}>
-                    <div className={styles.cardMain}>
-                      <div className={styles.cardTitle}>{h.title}</div>
-                      <div className={styles.metaRow}>
-                        <span className={styles.metaPill}>
-                          {h.frequencyMode === "daily" ? "Every day" : `Days: ${h.daysOfWeek.map(formatDow).join(", ")}`}
-                        </span>
-                        {h.notes ? <span className={styles.metaNote}>{h.notes}</span> : null}
+            <button
+              className={styles.iconBtn}
+              onClick={() => stepSection(1)}
+              type="button"
+              aria-label="Next section"
+              disabled={currentSectionIndex === SECTION_ORDER.length - 1}
+              style={{ minWidth: 44, opacity: currentSectionIndex === SECTION_ORDER.length - 1 ? 0.45 : 1 }}
+            >
+              {">"}
+            </button>
+          </div>
+
+          <div
+            ref={sectionScrollerRef}
+            onScroll={handleSectionScroll}
+            style={{
+              display: "flex",
+              gap: 0,
+              overflowX: "auto",
+              scrollSnapType: "x mandatory",
+              WebkitOverflowScrolling: "touch",
+              scrollbarWidth: "none",
+              msOverflowStyle: "none",
+            }}
+          >
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+              <div className={styles.list}>
+                {store.goals.length === 0 ? (
+                  <EmptyState text="No goals yet. Add one and give it an expiry date." />
+                ) : (
+                  store.goals.map((g) => (
+                    <div key={g.id} className={styles.card}>
+                      <div className={styles.cardMain}>
+                        <div className={styles.cardTitle}>{g.title}</div>
+                        <div className={styles.metaRow}>
+                          <span className={styles.metaPill}>Expiry: {g.expiry}</span>
+                        </div>
+                      </div>
+                      <div className={styles.cardActions}>
+                        <button
+                          className={styles.actionPrimary}
+                          onClick={() => applyDelta("goal", `${g.title} (Goal · Complete)`, +400)}
+                          type="button"
+                        >
+                          Complete <span className={styles.delta}>+400 UC</span>
+                        </button>
+                        <button
+                          className={styles.actionDanger}
+                          onClick={() => applyDelta("goal", `${g.title} (Goal · Failed)`, -200)}
+                          type="button"
+                        >
+                          Failed <span className={styles.delta}>-200 UC</span>
+                        </button>
+                        <button className={styles.iconBtn} onClick={() => removeItem("goals", g.id)} title="Remove" type="button">
+                          ✕
+                        </button>
                       </div>
                     </div>
-                    <div className={styles.cardActions}>
-                    <button
-                        className={styles.actionPrimary}
-                        onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +100)}
-                        type="button"
-                      >
-                        
-                        Hold <span className={styles.delta}>+{getPreviewDelta("good", 100)} UC</span>                      </button>
-                      <button
-                        className={styles.actionDanger}
-                        onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -50)}
-                        type="button"
-                      >
-                              Sold <span className={styles.delta}>-50 UC</span>
-                      </button>
-                      <button className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove" type="button">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
-          )}
 
-          {tab === "bad" && (
-            <div className={styles.list}>
-              {store.badHabits.length === 0 ? (
-                <EmptyState text="No bad habits yet. Add one and set an expiry date (or permanent)." />
-              ) : (
-                store.badHabits.map((b) => (
-                  <div key={b.id} className={styles.card}>
-                    <div className={styles.cardMain}>
-                      <div className={styles.cardTitle}>{b.title}</div>
-                      <div className={styles.metaRow}>
-                        <span className={styles.metaPill}>{b.expiryMode === "permanent" ? "Permanent" : `Expiry: ${b.expiryDate}`}</span>
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+              <div className={styles.list}>
+                {store.goodHabits.length === 0 ? (
+                  <EmptyState text="No good habits yet. Add a habit and choose frequency." />
+                ) : (
+                  store.goodHabits.map((h) => (
+                    <div key={h.id} className={styles.card}>
+                      <div className={styles.cardMain}>
+                        <div className={styles.cardTitle}>{h.title}</div>
+                        <div className={styles.metaRow}>
+                          <span className={styles.metaPill}>
+                            {h.frequencyMode === "daily" ? "Every day" : `Days: ${h.daysOfWeek.map(formatDow).join(", ")}`}
+                          </span>
+                          {h.notes ? <span className={styles.metaNote}>{h.notes}</span> : null}
+                        </div>
                       </div>
-                    </div>
-                    <div className={styles.cardActions}>
-                    <button
-                        className={styles.actionPrimary}
-                        onClick={() => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +100)}
-                        type="button"
-                      >
-                        
-                        Hold <span className={styles.delta}>+{getPreviewDelta("bad", 100)} UC</span>
-                      </button>
-                      <button
-                        className={styles.actionDanger}
-                        onClick={() => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -50)}
-                        type="button"
-                      >
+                      <div className={styles.cardActions}>
+                        <button
+                          className={styles.actionPrimary}
+                          onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +100)}
+                          type="button"
+                        >
+                          Hold <span className={styles.delta}>+{getPreviewDelta("good", 100)} UC</span>
+                        </button>
+                        <button
+                          className={styles.actionDanger}
+                          onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -50)}
+                          type="button"
+                        >
                           Sold <span className={styles.delta}>-50 UC</span>
-                      </button>
-                      <button className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove" type="button">
-                        ✕
-                      </button>
+                        </button>
+                        <button className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove" type="button">
+                          ✕
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
-              )}
+                  ))
+                )}
+              </div>
             </div>
-          )}
 
-          {tab === "addictions" && (
-            <div className={styles.list}>
-              {store.addictions.length === 0 ? (
-                <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
-              ) : (
-                store.addictions.map((a) => {
-                  const chargeState = addictionChargeMap.get(a.id) ?? getAddictionChargeState(a.title, store.tx, Date.now());
-                  const cooldownMs =
-                    chargeState.nextReductionAt !== null ? Math.max(0, chargeState.nextReductionAt - Date.now()) : 0;
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+              <div className={styles.list}>
+                {store.badHabits.length === 0 ? (
+                  <EmptyState text="No bad habits yet. Add one and set an expiry date (or permanent)." />
+                ) : (
+                  store.badHabits.map((b) => (
+                    <div key={b.id} className={styles.card}>
+                      <div className={styles.cardMain}>
+                        <div className={styles.cardTitle}>{b.title}</div>
+                        <div className={styles.metaRow}>
+                          <span className={styles.metaPill}>{b.expiryMode === "permanent" ? "Permanent" : `Expiry: ${b.expiryDate}`}</span>
+                        </div>
+                      </div>
+                      <div className={styles.cardActions}>
+                        <button
+                          className={styles.actionPrimary}
+                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +100)}
+                          type="button"
+                        >
+                          Hold <span className={styles.delta}>+{getPreviewDelta("bad", 100)} UC</span>
+                        </button>
+                        <button
+                          className={styles.actionDanger}
+                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -50)}
+                          type="button"
+                        >
+                          Sold <span className={styles.delta}>-50 UC</span>
+                        </button>
+                        <button className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove" type="button">
+                          ✕
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
 
-                  return (
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+              <div className={styles.list}>
+                {store.addictions.length === 0 ? (
+                  <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
+                ) : (
+                  store.addictions.map((a) => (
                     <div key={a.id} className={styles.card}>
                       <div className={styles.cardMain}>
                         <div className={styles.cardTitle}>{a.title}</div>
                         <div className={styles.metaRow}>
-                          <span className={styles.metaPill}>Current charge: -{chargeState.currentCharge} UC</span>
-                          {chargeState.nextReductionCharge !== null && chargeState.nextReductionAt !== null ? (
-                            <span className={styles.metaPill}>
-                              In {formatDurationShort(cooldownMs)} → -{chargeState.nextReductionCharge} UC
-                            </span>
-                          ) : (
-                            <span className={styles.metaPill}>Base charge active</span>
-                          )}
+                          <span className={styles.metaPill}>No expiry</span>
                         </div>
-
-                        {chargeState.reachedMax ? (
-                          <div className={styles.helperBox} style={{ marginTop: 10 }}>
-                            <div className={styles.helperTitle}>Seems you had a rough week.. Wanna try again?</div>
-                            <div className={styles.helperText}>
-                              Reset the addiction charge back to the basic -100 UC and start a fresh streak.
-                            </div>
-                          </div>
-                        ) : null}
                       </div>
-
                       <div className={styles.cardActions}>
                         <button
                           className={styles.actionPrimary}
@@ -980,35 +1063,42 @@ function submitBuyActivity() {
                         >
                           Hold <span className={styles.delta}>+{getPreviewDelta("addiction", 200)} UC</span>
                         </button>
-
                         <button
                           className={styles.actionDanger}
-                          onClick={() => applyDelta("addiction", getAddictionSoldLabel(a.title), -chargeState.currentCharge)}
+                          onClick={() => applyDelta("addiction", `${a.title} (Addiction · Sold)`, -100)}
                           type="button"
                         >
-                          Sold <span className={styles.delta}>-{chargeState.currentCharge} UC</span>
+                          Sold <span className={styles.delta}>-100 UC</span>
                         </button>
-
-                        {chargeState.reachedMax ? (
-                          <button
-                            className={styles.secondaryBtn}
-                            onClick={() => applyDelta("addiction", getAddictionResetLabel(a.title), 0)}
-                            type="button"
-                          >
-                            Reset charges
-                          </button>
-                        ) : null}
-
                         <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button">
                           ✕
                         </button>
                       </div>
                     </div>
-                  );
-                })
-              )}
+                  ))
+                )}
+              </div>
             </div>
-          )}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 14 }}>
+            {SECTION_ORDER.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => switchTab(key)}
+                aria-label={`Go to ${SECTION_TITLES[key]}`}
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 999,
+                  border: "none",
+                  background: key === tab ? "rgba(45,212,191,0.95)" : "rgba(255,255,255,0.22)",
+                  boxShadow: key === tab ? "0 0 0 4px rgba(45,212,191,0.12)" : "none",
+                }}
+              />
+            ))}
+          </div>
         </section>
 
         {/* CHART BELOW PANEL */}
