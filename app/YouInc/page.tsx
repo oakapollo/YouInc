@@ -1496,8 +1496,15 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   }, [bucketMs, selectedCandle]);
 
 
-  const todayChangePct = getTodayChangePercent(tx, marketCapUC);
-
+  const candleRange = useMemo(() => {
+    if (!selectedCandle) return null;
+    const start = selectedCandle.t;
+    const end = start + bucketMs;
+    return { start, end };
+  }, [bucketMs, selectedCandle]);
+  
+  const todayChangePct = getTodayChangePercent(store.tx, store.marketCapUC);
+  
   const todayDateLabel = useMemo(
     () =>
       new Intl.DateTimeFormat("en-GB", {
@@ -1508,8 +1515,10 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
       }).format(new Date()),
     [nowTick]
   );
-
-  const todayChangeText = `${todayDateLabel} [${todayChangePct >= 0 ? "+" : ""}${todayChangePct.toFixed(1)}%]`;
+  
+  const todayChangeText = `${todayDateLabel} [${
+    todayChangePct >= 0 ? "+" : ""
+  }${todayChangePct.toFixed(1)}%]`;
 
   const formatTxLabel = (label: string, deltaUC: number) => {
     const match = label.match(/^(.*)\s\(([^)]+)\)$/);
