@@ -34,7 +34,13 @@ type BadHabit = {
   createdAt: number;
 };
 
-type Addiction = { id: string; title: string; createdAt: number };
+type Addiction = {
+  id: string;
+  title: string;
+  createdAt: number;
+  penaltyLevel: number; // 0..5 maps to 100..3200 UC
+  cooldownUntil: number; // unix ms; if now >= cooldownUntil, relapse penalty resets to base
+};
 
 type Tx = { id: string; ts: number; deltaUC: number; label: string };
 
@@ -45,9 +51,6 @@ type Store = {
   goodHabits: GoodHabit[];
   badHabits: BadHabit[];
   addictions: Addiction[];
-
-
-  // NEW: tracks the last hour-bucket we processed decay for (ms since epoch, floored to hour)
   lastDecayHourTs?: number;
 };
 
@@ -68,6 +71,40 @@ function stripUndefined<T>(value: T): T {
   return value;
 }
 
+
+
+const ADDICTION_PENALTIES = [100, 200, 400, 800, 1600, 3200] as const;
+const ADDICTION_COOLDOWN_DAYS = 3;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function clampAddictionPenaltyLevel(level: number) {
+  return Math.max(0, Math.min(level, ADDICTION_PENALTIES.length - 1));
+}
+
+function getAddictionPenalty(level: number) {
+  return ADDICTION_PENALTIES[clampAddictionPenaltyLevel(level)];
+}
+
+function getAddictionCooldownMs(level: number) {
+  return (clampAddictionPenaltyLevel(level) + 1) * ADDICTION_COOLDOWN_DAYS * DAY_MS;
+}
+
+function isAddictionCooldownActive(addiction: Pick<Addiction, "cooldownUntil">, nowTs = Date.now()) {
+  return addiction.cooldownUntil > nowTs;
+}
+
+function getCurrentAddictionPenalty(addiction: Pick<Addiction, "penaltyLevel" | "cooldownUntil">, nowTs = Date.now()) {
+  if (!isAddictionCooldownActive(addiction, nowTs)) return ADDICTION_PENALTIES[0];
+  return getAddictionPenalty(addiction.penaltyLevel);
+}
+
+function formatDurationParts(ms: number) {
+  const totalMinutes = Math.max(0, Math.ceil(ms / (60 * 1000)));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+  return { days, hours, minutes };
+}
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -246,7 +283,7 @@ export default function YouIncPage() {
   const [addictionTitle, setAddictionTitle] = useState("");
 
   // ⏱️ Real-time tick (needed for 1m chart to "move" even without actions)
-  const [nowTick, setNowTick] = useState(0);
+  const [nowTick, setNowTick] = useState(Date.now());
 
   useEffect(() => {
     const interval = setInterval(() => setNowTick(Date.now()), 60 * 1000);
@@ -324,7 +361,9 @@ export default function YouIncPage() {
                 goals: Array.isArray(data.goals) ? (data.goals as Goal[]) : prev.goals,
                 goodHabits: Array.isArray(data.goodHabits) ? (data.goodHabits as GoodHabit[]) : prev.goodHabits,
                 badHabits: Array.isArray(data.badHabits) ? (data.badHabits as BadHabit[]) : prev.badHabits,
-                addictions: Array.isArray(data.addictions) ? (data.addictions as Addiction[]) : prev.addictions,
+                addictions: Array.isArray(data.addictions)
+                  ? (data.addictions as Array<Partial<Addiction> & { id: string; title: string; createdAt: number }>).map(normalizeAddiction)
+                  : prev.addictions,
                 lastDecayHourTs: typeof data.lastDecayHourTs === "number" ? data.lastDecayHourTs : prev.lastDecayHourTs,
               }));
             }
@@ -363,7 +402,61 @@ export default function YouIncPage() {
 
   // ------- persistence -------
 
+  function normalizeAddiction(raw: Partial<Addiction> & { id: string; title: string; createdAt: number }): Addiction {
+    return {
+      id: raw.id,
+      title: raw.title,
+      createdAt: raw.createdAt,
+      penaltyLevel: clampAddictionPenaltyLevel(typeof raw.penaltyLevel === "number" ? raw.penaltyLevel : 0),
+      cooldownUntil: typeof raw.cooldownUntil === "number" ? raw.cooldownUntil : 0,
+    };
+  }
 
+  function handleAddictionSold(addictionId: string) {
+    const nowTs = Date.now();
+
+    setStore((prev) => {
+      const addiction = prev.addictions.find((item) => item.id === addictionId);
+      if (!addiction) return prev;
+
+      const active = isAddictionCooldownActive(addiction, nowTs);
+      const nextLevel = active ? clampAddictionPenaltyLevel(addiction.penaltyLevel + 1) : 0;
+      const charge = getAddictionPenalty(nextLevel);
+      const nextCooldownUntil = nowTs + getAddictionCooldownMs(nextLevel);
+
+      const nextAddictions = prev.addictions.map((item) =>
+        item.id === addictionId
+          ? { ...item, penaltyLevel: nextLevel, cooldownUntil: nextCooldownUntil }
+          : item
+      );
+
+      const { effectiveDeltaUC, taxed } = applyTaxes("addiction", -charge, prev.marketCapUC);
+      const tx: Tx = {
+        id: uid(),
+        ts: nowTs,
+        deltaUC: effectiveDeltaUC,
+        label: taxed
+          ? `${addiction.title} (Addiction · Sold · ${charge} UC taxed)`
+          : `${addiction.title} (Addiction · Sold · ${charge} UC)`,
+      };
+
+      return {
+        ...prev,
+        addictions: nextAddictions,
+        marketCapUC: Math.max(0, prev.marketCapUC + effectiveDeltaUC),
+        tx: [tx, ...prev.tx].slice(0, 2000),
+      };
+    });
+  }
+
+  function resetAddictionCharges(addictionId: string) {
+    setStore((prev) => ({
+      ...prev,
+      addictions: prev.addictions.map((item) =>
+        item.id === addictionId ? { ...item, penaltyLevel: 0, cooldownUntil: 0 } : item
+      ),
+    }));
+  }
 
   // ------- taxed market cap updates + transactions -------
 function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
@@ -652,7 +745,7 @@ function submitBuyActivity() {
         id: uid(),
         title: badTitle.trim(),
         expiryMode: badExpiryMode,
-        expiryDate: badExpiryMode === "date" ? badExpiryDate : null,
+        expiryDate: badExpiryMode === "date" ? badExpiryDate : undefined,
         createdAt: Date.now(),
       };
       setStore((s) => ({ ...s, badHabits: [item, ...s.badHabits] }));
@@ -661,7 +754,13 @@ function submitBuyActivity() {
       return;
     }
 
-    const item: Addiction = { id: uid(), title: addictionTitle.trim(), createdAt: Date.now() };
+    const item: Addiction = {
+      id: uid(),
+      title: addictionTitle.trim(),
+      createdAt: Date.now(),
+      penaltyLevel: 0,
+      cooldownUntil: 0,
+    };
     setStore((s) => ({ ...s, addictions: [item, ...s.addictions] }));
     closeModal();
     resetFormForTab("addictions");
@@ -845,34 +944,59 @@ function submitBuyActivity() {
               {store.addictions.length === 0 ? (
                 <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
               ) : (
-                store.addictions.map((a) => (
-                  <div key={a.id} className={styles.card}>
-                    <div className={styles.cardMain}>
-                      <div className={styles.cardTitle}>{a.title}</div>
-                      <div className={styles.metaRow}>
-                        <span className={styles.metaPill}>No expiry</span>
+                store.addictions.map((a) => {
+                  const currentPenalty = getCurrentAddictionPenalty(a, nowTick);
+                  const cooldownActive = isAddictionCooldownActive(a, nowTick);
+                  const cooldownRemaining = Math.max(0, a.cooldownUntil - nowTick);
+                  const cooldownParts = formatDurationParts(cooldownRemaining);
+                  const atMaxPenalty = a.penaltyLevel >= ADDICTION_PENALTIES.length - 1 && cooldownActive;
+
+                  return (
+                    <div key={a.id} className={styles.card}>
+                      <div className={styles.cardMain}>
+                        <div className={styles.cardTitle}>{a.title}</div>
+                        <div className={styles.metaRow}>
+                          <span className={styles.metaPill}>Current charge: -{currentPenalty} UC</span>
+                          <span className={styles.metaPill}>
+                            {cooldownActive
+                              ? `Cooldown: ${cooldownParts.days}d ${cooldownParts.hours}h ${cooldownParts.minutes}m`
+                              : "Cooldown cleared · next sold resets to -100 UC"}
+                          </span>
+                        </div>
+                        {atMaxPenalty ? (
+                          <div className={styles.helperBox} style={{ marginTop: 10 }}>
+                            <div className={styles.helperTitle}>Seems you had a rough week.. Wanna try again?</div>
+                            <div className={styles.helperText}>You reached the max relapse charge of -3200 UC.</div>
+                            <div style={{ marginTop: 10 }}>
+                              <button className={styles.ghostBtn} type="button" onClick={() => resetAddictionCharges(a.id)}>
+                                Reset charges
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                      <div className={styles.cardActions}>
+                        <button
+                          className={styles.actionPrimary}
+                          onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200)}
+                          type="button"
+                        >
+                          Hold <span className={styles.delta}>+{getPreviewDelta("addiction", 200)} UC</span>
+                        </button>
+                        <button
+                          className={styles.actionDanger}
+                          onClick={() => handleAddictionSold(a.id)}
+                          type="button"
+                        >
+                          Sold <span className={styles.delta}>-{currentPenalty} UC</span>
+                        </button>
+                        <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button">
+                          ✕
+                        </button>
                       </div>
                     </div>
-                    <div className={styles.cardActions}>
-                    <button
-                        className={styles.actionPrimary}
-                        onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200)}
-                        type="button"
-                      >
-                        Hold <span className={styles.delta}>+{getPreviewDelta("addiction", 200)} UC</span>                      </button>
-                      <button
-                        className={styles.actionDanger}
-                        onClick={() => applyDelta("addiction", `${a.title} (Addiction · Sold)`, -100)}
-                        type="button"
-                      >
-                            Sold <span className={styles.delta}>-100 UC</span>
-                      </button>
-                      <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button">
-                        ✕
-                      </button>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
@@ -1196,7 +1320,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     if (!visibleData.length) return { min: 0.9, max: 1.1 };
     let mn = Infinity;
     let mx = -Infinity;
-    for (const d of data) {
+    for (const d of visibleData) {
       mn = Math.min(mn, d.l);
       mx = Math.max(mx, d.h);
     }
@@ -1283,13 +1407,13 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   );
 
   const selectedCandle = useMemo(
-    () => (selectedCandleKey ? data.find((c) => c.t === selectedCandleKey) ?? null : null),
+    () => (selectedCandleKey !== null ? data.find((c) => c.t === selectedCandleKey) ?? null : null),
     [data, selectedCandleKey]
   );
 
   // Candle selection filtering: use the timeframe bucket to collect tx for the selected candle.
   const selectedTx = useMemo(() => {
-    if (!selectedCandleKey) return [];
+    if (selectedCandleKey === null) return [];
     const list = txByBucket.get(selectedCandleKey) ?? [];
     return [...list].sort((a, b) => b.ts - a.ts);
   }, [selectedCandleKey, txByBucket]);
