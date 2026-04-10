@@ -928,10 +928,13 @@ function submitBuyActivity() {
               display: "flex",
               gap: 0,
               overflowX: "auto",
+              overflowY: "hidden",
               scrollSnapType: "x mandatory",
               WebkitOverflowScrolling: "touch",
               scrollbarWidth: "none",
               msOverflowStyle: "none",
+              touchAction: "pan-y",
+              overscrollBehaviorX: "contain",
             }}
           >
             <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
@@ -1682,6 +1685,16 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
       } else if (!state.isPanning) {
         const dx = event.clientX - state.startX;
         const dy = event.clientY - state.startY;
+
+        // Let normal page scrolling win on vertical gestures.
+        if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) {
+          if (state.longPressTimer) {
+            clearTimeout(state.longPressTimer);
+            state.longPressTimer = null;
+          }
+          return;
+        }
+
         if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
           state.isPanning = true;
           setAutoFollow(false);
@@ -1818,7 +1831,14 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
             className={styles.chartSvg}
             viewBox={`0 0 ${w} ${h}`}
             preserveAspectRatio="none"
-            style={{ width: "100%", height: 280, display: "block" }}
+            style={{
+              width: "100%",
+              height: 280,
+              display: "block",
+              touchAction: "pan-y pinch-zoom",
+              userSelect: "none",
+              WebkitUserSelect: "none",
+            }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
