@@ -304,6 +304,9 @@ export default function YouIncPage() {
   const sectionSnapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const [buyActivity, setBuyActivity] = useState("");
+  const [showChart, setShowChart] = useState(false);
+  const [chartLoading, setChartLoading] = useState(false);
+  const chartSectionRef = useRef<HTMLElement | null>(null);
 
   const [store, setStore] = useState<Store>({
     marketCapUC: 10000, // 10000 UC = 1.000 U$
@@ -603,6 +606,31 @@ function submitBuyActivity() {
   applyDelta("buy", `BUY: ${a}`, +25);
   setBuyActivity("");
   setIsBuyOpen(false);
+}
+
+function openChartView() {
+  setChartLoading(true);
+  setShowChart(false);
+
+  window.setTimeout(() => {
+    setShowChart(true);
+    setChartLoading(false);
+    requestAnimationFrame(() => {
+      chartSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }, 180);
+}
+
+function closeChartView() {
+  setChartLoading(true);
+
+  window.setTimeout(() => {
+    setShowChart(false);
+    setChartLoading(false);
+    requestAnimationFrame(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    });
+  }, 120);
 }
 
   // ------- derived -------
@@ -1160,7 +1188,6 @@ function submitBuyActivity() {
 </div>
 
           <div className={styles.tfRow}>
-            {/* BUY */}
             <button
               className={styles.actionPrimary}
               type="button"
@@ -1170,19 +1197,34 @@ function submitBuyActivity() {
               BUY <span className={styles.delta}>+25 UC</span>
             </button>
 
-            {/* TF buttons */}
-            <button className={`${styles.tfBtn} ${tf === "1d" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1d")} type="button">
-              1D
-            </button>
-            <button className={`${styles.tfBtn} ${tf === "3d" ? styles.tfBtnOn : ""}`} onClick={() => setTf("3d")} type="button">
-              3D
-            </button>
-            <button className={`${styles.tfBtn} ${tf === "1w" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1w")} type="button">
-              1W
-            </button>
-            <button className={`${styles.tfBtn} ${tf === "1m" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1m")} type="button">
-              1M
-            </button>
+            {!showChart ? (
+              <button
+                className={styles.primaryBtn}
+                type="button"
+                onClick={openChartView}
+                disabled={chartLoading}
+              >
+                {chartLoading ? "Loading…" : "View chart"}
+              </button>
+            ) : (
+              <>
+                <button className={styles.ghostBtn} type="button" onClick={closeChartView} disabled={chartLoading}>
+                  {chartLoading ? "Loading…" : "Back"}
+                </button>
+                <button className={`${styles.tfBtn} ${tf === "1d" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1d")} type="button">
+                  1D
+                </button>
+                <button className={`${styles.tfBtn} ${tf === "3d" ? styles.tfBtnOn : ""}`} onClick={() => setTf("3d")} type="button">
+                  3D
+                </button>
+                <button className={`${styles.tfBtn} ${tf === "1w" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1w")} type="button">
+                  1W
+                </button>
+                <button className={`${styles.tfBtn} ${tf === "1m" ? styles.tfBtnOn : ""}`} onClick={() => setTf("1m")} type="button">
+                  1M
+                </button>
+              </>
+            )}
           </div>
         </section>
 
@@ -1211,7 +1253,18 @@ function submitBuyActivity() {
           </div>
         )}
 
-<CandleChart data={candles} tx={store.tx} timeframe={tf} />
+        {chartLoading && (
+          <div className={styles.helperBox} style={{ marginBottom: 12, textAlign: "center" }}>
+            <div className={styles.helperTitle}>Loading chart…</div>
+            <div className={styles.helperText}>Preparing price history and candle details.</div>
+          </div>
+        )}
+
+        {showChart && !chartLoading && (
+          <section ref={chartSectionRef}>
+            <CandleChart data={candles} tx={store.tx} timeframe={tf} />
+          </section>
+        )}
 
 
         {/* MODAL */}
