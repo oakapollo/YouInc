@@ -846,12 +846,12 @@ function submitBuyActivity() {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} style={{ minHeight: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "none" }}>
       <div className={styles.glowA} />
       <div className={styles.glowB} />
       <div className={styles.glowC} />
 
-      <div className={styles.shell}>
+      <div className={styles.shell} style={{ minHeight: "100%", overflow: "visible" }}>
         <header className={styles.header}>
           <div className={styles.brand}>
             <div className={styles.logo} />
@@ -876,7 +876,7 @@ function submitBuyActivity() {
         
         <section
           className={styles.panel}
-          style={{ paddingTop: 18 }}
+          style={{ paddingTop: 18, overflow: "visible", touchAction: "pan-y", overscrollBehavior: "auto" }}
         >
           <div
             style={{
@@ -928,17 +928,18 @@ function submitBuyActivity() {
               display: "flex",
               gap: 0,
               overflowX: "auto",
-              overflowY: "hidden",
               scrollSnapType: "x mandatory",
               WebkitOverflowScrolling: "touch",
               scrollbarWidth: "none",
               msOverflowStyle: "none",
-              touchAction: "pan-y",
+              overflowY: "visible",
+              touchAction: "pan-y pinch-zoom",
               overscrollBehaviorX: "contain",
+              overscrollBehaviorY: "auto",
             }}
           >
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
-              <div className={styles.list}>
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start", overflow: "visible" }}>
+              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none", minHeight: 1 }}>
                 {store.goals.length === 0 ? (
                   <EmptyState text="No goals yet. Add one and give it an expiry date." />
                 ) : (
@@ -975,8 +976,8 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
-              <div className={styles.list}>
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start", overflow: "visible" }}>
+              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none", minHeight: 1 }}>
                 {store.goodHabits.length === 0 ? (
                   <EmptyState text="No good habits yet. Add a habit and choose frequency." />
                 ) : (
@@ -1016,8 +1017,8 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
-              <div className={styles.list}>
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start", overflow: "visible" }}>
+              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none", minHeight: 1 }}>
                 {store.badHabits.length === 0 ? (
                   <EmptyState text="No bad habits yet. Add one and set an expiry date (or permanent)." />
                 ) : (
@@ -1054,8 +1055,8 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
-              <div className={styles.list}>
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start", overflow: "visible" }}>
+              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none", minHeight: 1 }}>
                 {store.addictions.length === 0 ? (
                   <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
                 ) : (
@@ -1136,7 +1137,7 @@ function submitBuyActivity() {
         </section>
 
         {/* CHART BELOW PANEL */}
-        <section className={styles.topStats}>
+        <section className={styles.topStats} style={{ overflow: "visible", touchAction: "pan-y" }}>
           <div className={styles.statBlock}>
             <div className={styles.statLabel}>Market Cap</div>
             <div className={styles.statValue}>{store.marketCapUC.toLocaleString()} UC</div>
@@ -1685,9 +1686,10 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
       } else if (!state.isPanning) {
         const dx = event.clientX - state.startX;
         const dy = event.clientY - state.startY;
+        const absDx = Math.abs(dx);
+        const absDy = Math.abs(dy);
 
-        // Let normal page scrolling win on vertical gestures.
-        if (Math.abs(dy) > 8 && Math.abs(dy) > Math.abs(dx)) {
+        if (absDy > 8 && absDy > absDx) {
           if (state.longPressTimer) {
             clearTimeout(state.longPressTimer);
             state.longPressTimer = null;
@@ -1695,14 +1697,17 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
           return;
         }
 
-        if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+        if (absDx > 8 && absDx > absDy) {
           state.isPanning = true;
           setAutoFollow(false);
           if (svgRef.current) {
             svgRef.current.setPointerCapture(event.pointerId);
           }
-        } else if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
-          if (state.longPressTimer) clearTimeout(state.longPressTimer);
+        } else if (absDx > 6 || absDy > 6) {
+          if (state.longPressTimer) {
+            clearTimeout(state.longPressTimer);
+            state.longPressTimer = null;
+          }
         }
       }
 
@@ -1732,7 +1737,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
         state.isPanning = false;
         state.panPointerId = null;
       }
-      if (svgRef.current) {
+      if (svgRef.current?.hasPointerCapture?.(event.pointerId)) {
         svgRef.current.releasePointerCapture(event.pointerId);
       }
 
@@ -1797,7 +1802,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
 
   return (
-    <div className={styles.chartSection}>
+    <div className={styles.chartSection} style={{ overflow: "visible", touchAction: "pan-y", overscrollBehaviorY: "auto" }}>
       <div className={styles.chartControls}>
         <div className={styles.chartBtnRow}>
           <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("out")} aria-label="Zoom out">
@@ -1820,7 +1825,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
         </label>
       </div>
 
-      <div className={styles.chartWrap} ref={containerRef}>
+      <div className={styles.chartWrap} ref={containerRef} style={{ overflow: "visible", touchAction: "pan-y", overscrollBehaviorY: "auto" }}>
         {!data.length ? (
           <div style={{ padding: 12, opacity: 0.7, fontSize: 13 }}>
             No activity yet — hit Complete / Hold buttons to print candles.
@@ -1831,14 +1836,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
             className={styles.chartSvg}
             viewBox={`0 0 ${w} ${h}`}
             preserveAspectRatio="none"
-            style={{
-              width: "100%",
-              height: 280,
-              display: "block",
-              touchAction: "pan-y pinch-zoom",
-              userSelect: "none",
-              WebkitUserSelect: "none",
-            }}
+            style={{ width: "100%", height: 280, display: "block", touchAction: "pan-y pinch-zoom" }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -1912,7 +1910,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     ) : null}
   </div>
 
-  <div className={`${styles.detailsPanel} ${selectedCandle ? styles.detailsPanelOpen : ""}`}>
+  <div className={`${styles.detailsPanel} ${selectedCandle ? styles.detailsPanelOpen : ""}`} style={{ overflow: "visible", touchAction: "pan-y" }}>
     <div className={styles.detailsHeader}>
       <div>
         <div className={styles.detailsTitle}>Candle Details</div>
@@ -1955,7 +1953,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
               </div>
             </div>
 
-            <div className={styles.txList}>
+            <div className={styles.txList} style={{ overflowY: "visible", maxHeight: "none" }}>
               {selectedTx.length ? (
                 selectedTx.map((entry) => {
                   const { title, action } = formatTxLabel(entry.label, entry.deltaUC);
