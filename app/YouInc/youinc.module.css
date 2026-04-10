@@ -37,14 +37,22 @@
 
 .header {
   @apply flex items-center justify-between gap-4;
-  position: sticky;
-  top: 0;
+  position: relative;
   z-index: 20;
-  backdrop-filter: blur(16px);
-  background: linear-gradient(180deg, rgba(10, 15, 31, 0.92), rgba(10, 15, 31, 0.55));
+  background: rgba(10, 15, 31, 0.92);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   padding-top: calc(12px + env(safe-area-inset-top));
   padding-bottom: 12px;
+}
+
+@media (min-width: 768px) {
+  .header {
+    position: sticky;
+    top: 0;
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    background: linear-gradient(180deg, rgba(10, 15, 31, 0.92), rgba(10, 15, 31, 0.55));
+  }
 }
 
 .brand {
@@ -365,7 +373,7 @@
 }
 
 .chartSvg {
-  touch-action: pan-y;
+  touch-action: auto;
   cursor: crosshair;
 }
 
@@ -389,15 +397,16 @@
 }
 
 .detailsPanel {
-  @apply rounded-3xl ring-1 ring-white/10 px-4 py-0 overflow-hidden;
+  @apply rounded-3xl ring-1 ring-white/10 px-4 py-0;
   background: rgba(8, 12, 24, 0.65);
-  max-height: 0;
-  opacity: 0;
-  transition: max-height 250ms ease, opacity 250ms ease;
+  overflow: visible;
+  max-height: none;
+  opacity: 1;
+  transition: none;
 }
 
 .detailsPanelOpen {
-  max-height: 520px;
+  max-height: none;
   opacity: 1;
   padding-top: 16px;
   padding-bottom: 16px;
@@ -434,9 +443,9 @@
 
 .txList {
   @apply flex flex-col gap-2;
-  max-height: 260px;
-  overflow-y: auto;
-  padding-right: 4px;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
 }
 
 .txItem {
@@ -479,7 +488,10 @@
 .sectionScroller {
   display: flex;
   overflow-x: auto;
-  scroll-snap-type: x mandatory;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
   gap: 16px;
   padding-bottom: 8px;
 }
@@ -512,4 +524,17 @@
 
 .todayChangeNegative {
   color: rgba(251, 113, 133, 0.95);
+}
+
+.chartWrap,
+.panel,
+.card,
+.detailsPanel,
+.sectionScroller {
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+}
+
+.page {
+  -webkit-overflow-scrolling: touch;
 }

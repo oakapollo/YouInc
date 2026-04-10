@@ -928,11 +928,8 @@ function submitBuyActivity() {
               display: "flex",
               gap: 0,
               overflowX: "auto",
-              overflowY: "hidden",
-              scrollSnapType: "x proximity",
+              scrollSnapType: "x mandatory",
               WebkitOverflowScrolling: "touch",
-              overscrollBehaviorX: "contain",
-              touchAction: "auto",
               scrollbarWidth: "none",
               msOverflowStyle: "none",
             }}
@@ -1622,7 +1619,6 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
       if (!data.length) return;
-      if (event.pointerType !== "mouse") return;
       const state = pointerStateRef.current;
       state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
@@ -1657,9 +1653,8 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
-      // Keep touch input free for native page scrolling. Mouse keeps chart hover/pan.
+      // Pan/zoom logic: horizontal drag pans (offsetFromRight), two-finger pinch scales visibleCount.
       if (!data.length) return;
-      if (event.pointerType !== "mouse") return;
       const state = pointerStateRef.current;
       if (!state.pointers.has(event.pointerId)) return;
       state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -1712,7 +1707,6 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
   const handlePointerUp = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
-      if (event.pointerType !== "mouse") return;
       const state = pointerStateRef.current;
       if (state.longPressTimer) {
         clearTimeout(state.longPressTimer);
@@ -1745,19 +1739,6 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     setHover(null);
     setTooltip(null);
   }, []);
-
-  const handleChartClick = useCallback(
-    (event: React.MouseEvent<SVGSVGElement>) => {
-      if (!data.length) return;
-      const index = getIndexFromClientX(event.clientX);
-      const candle = data[index];
-      if (candle) {
-        setSelectedCandleKey(candle.t);
-        setTooltipForEvent(candle, event.clientX, event.clientY);
-      }
-    },
-    [data, getIndexFromClientX, setTooltipForEvent]
-  );
 
   const handleZoomButton = useCallback(
     (direction: "in" | "out") => {
@@ -1837,8 +1818,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
             className={styles.chartSvg}
             viewBox={`0 0 ${w} ${h}`}
             preserveAspectRatio="none"
-            style={{ width: "100%", height: 280, display: "block", touchAction: "auto" }}
-            onClick={handleChartClick}
+            style={{ width: "100%", height: 280, display: "block" }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
