@@ -846,12 +846,12 @@ function submitBuyActivity() {
   }
 
   return (
-    <div className={styles.page} style={{ minHeight: "100dvh", overflowY: "auto", WebkitOverflowScrolling: "touch", overscrollBehaviorY: "none" }}>
+    <div className={styles.page}>
       <div className={styles.glowA} />
       <div className={styles.glowB} />
       <div className={styles.glowC} />
 
-      <div className={styles.shell} style={{ minHeight: "100%", overflow: "visible" }}>
+      <div className={styles.shell}>
         <header className={styles.header}>
           <div className={styles.brand}>
             <div className={styles.logo} />
@@ -876,7 +876,7 @@ function submitBuyActivity() {
         
         <section
           className={styles.panel}
-          style={{ paddingTop: 18, overflow: "visible", touchAction: "pan-y", overscrollBehavior: "auto" }}
+          style={{ paddingTop: 18 }}
         >
           <div
             style={{
@@ -932,14 +932,12 @@ function submitBuyActivity() {
               WebkitOverflowScrolling: "touch",
               scrollbarWidth: "none",
               msOverflowStyle: "none",
-              overflowY: "visible",
-              touchAction: "pan-y pinch-zoom",
+              touchAction: "pan-x",
               overscrollBehaviorX: "contain",
-              overscrollBehaviorY: "auto",
             }}
           >
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start", overflow: "visible" }}>
-              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none", minHeight: 1 }}>
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none" }}>
                 {store.goals.length === 0 ? (
                   <EmptyState text="No goals yet. Add one and give it an expiry date." />
                 ) : (
@@ -976,8 +974,8 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start", overflow: "visible" }}>
-              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none", minHeight: 1 }}>
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none" }}>
                 {store.goodHabits.length === 0 ? (
                   <EmptyState text="No good habits yet. Add a habit and choose frequency." />
                 ) : (
@@ -1017,8 +1015,8 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start", overflow: "visible" }}>
-              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none", minHeight: 1 }}>
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none" }}>
                 {store.badHabits.length === 0 ? (
                   <EmptyState text="No bad habits yet. Add one and set an expiry date (or permanent)." />
                 ) : (
@@ -1055,8 +1053,8 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start", overflow: "visible" }}>
-              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none", minHeight: 1 }}>
+            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none" }}>
                 {store.addictions.length === 0 ? (
                   <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
                 ) : (
@@ -1137,7 +1135,7 @@ function submitBuyActivity() {
         </section>
 
         {/* CHART BELOW PANEL */}
-        <section className={styles.topStats} style={{ overflow: "visible", touchAction: "pan-y" }}>
+        <section className={styles.topStats}>
           <div className={styles.statBlock}>
             <div className={styles.statLabel}>Market Cap</div>
             <div className={styles.statValue}>{store.marketCapUC.toLocaleString()} UC</div>
@@ -1689,7 +1687,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
         const absDx = Math.abs(dx);
         const absDy = Math.abs(dy);
 
-        if (absDy > 8 && absDy > absDx) {
+        if (absDy > 10 && absDy > absDx) {
           if (state.longPressTimer) {
             clearTimeout(state.longPressTimer);
             state.longPressTimer = null;
@@ -1697,7 +1695,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
           return;
         }
 
-        if (absDx > 8 && absDx > absDy) {
+        if (absDx > 12 && absDx > absDy * 1.2) {
           state.isPanning = true;
           setAutoFollow(false);
           if (svgRef.current) {
@@ -1802,7 +1800,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
 
   return (
-    <div className={styles.chartSection} style={{ overflow: "visible", touchAction: "pan-y", overscrollBehaviorY: "auto" }}>
+    <div className={styles.chartSection}>
       <div className={styles.chartControls}>
         <div className={styles.chartBtnRow}>
           <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("out")} aria-label="Zoom out">
@@ -1825,7 +1823,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
         </label>
       </div>
 
-      <div className={styles.chartWrap} ref={containerRef} style={{ overflow: "visible", touchAction: "pan-y", overscrollBehaviorY: "auto" }}>
+      <div className={styles.chartWrap} ref={containerRef} style={{ overflow: "visible" }}>
         {!data.length ? (
           <div style={{ padding: 12, opacity: 0.7, fontSize: 13 }}>
             No activity yet — hit Complete / Hold buttons to print candles.
@@ -1910,7 +1908,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     ) : null}
   </div>
 
-  <div className={`${styles.detailsPanel} ${selectedCandle ? styles.detailsPanelOpen : ""}`} style={{ overflow: "visible", touchAction: "pan-y" }}>
+  <div className={`${styles.detailsPanel} ${selectedCandle ? styles.detailsPanelOpen : ""}`} style={{ overflow: "visible", maxHeight: "none" }}>
     <div className={styles.detailsHeader}>
       <div>
         <div className={styles.detailsTitle}>Candle Details</div>
@@ -1929,7 +1927,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
       ) : null}
         </div>
         {selectedCandle ? (
-          <div className={styles.detailsBody}>
+          <div className={styles.detailsBody} style={{ overflow: "visible", maxHeight: "none" }}>
             <div className={styles.detailsStats}>
               <div>
                 <span>Open</span>
@@ -1953,7 +1951,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
               </div>
             </div>
 
-            <div className={styles.txList} style={{ overflowY: "visible", maxHeight: "none" }}>
+            <div className={styles.txList} style={{ overflow: "visible", maxHeight: "none" }}>
               {selectedTx.length ? (
                 selectedTx.map((entry) => {
                   const { title, action } = formatTxLabel(entry.label, entry.deltaUC);
