@@ -186,17 +186,87 @@ function floorToBucket(ts: number, bucketMs: number) {
   return Math.floor(ts / bucketMs) * bucketMs;
 }
 
-function buildCandles(startCapUC: number, txAsc: Tx[], bucketMs: number, lookbackBuckets: number): Candle[] {
-  const now = Date.now();
-  const endBucket = floorToBucket(now, bucketMs);
-// Expand lookback to cover historical tx so older candles are rendered from stored data.
-const earliestTx = txAsc[0]?.ts ?? endBucket;
-const earliestBucket = floorToBucket(earliestTx, bucketMs);
-const computedBuckets = Math.max(1, Math.floor((endBucket - earliestBucket) / bucketMs) + 1);
-const effectiveBuckets = Math.max(lookbackBuckets, computedBuckets);
-const startBucket = endBucket - bucketMs * (effectiveBuckets - 1);
+function getUkLocalParts(ts: number) {
+  const ukWallDate = new Date(getUkWallMs(new Date(ts)));
+  return {
+    year: ukWallDate.getUTCFullYear(),
+    month: ukWallDate.getUTCMonth(),
+    day: ukWallDate.getUTCDate(),
+    dayOfWeek: ukWallDate.getUTCDay(),
+  };
+}
 
-  // reverse-apply tx after startBucket to estimate cap at startBucket
+function getBucketStartUtcMs(ts: number, timeframe: "1d" | "3d" | "1w" | "1m") {
+  if (timeframe === "1d") {
+    return floorToBucket(ts, 24 * 60 * 60 * 1000);
+  }
+
+  if (timeframe === "3d") {
+    return floorToBucket(ts, 3 * 24 * 60 * 60 * 1000);
+  }
+
+  const { year, month, day, dayOfWeek } = getUkLocalParts(ts);
+
+  if (timeframe === "1w") {
+    const diffFromMonday = (dayOfWeek + 6) % 7;
+    const startOfDayUkMs = Date.UTC(year, month, day);
+    return ukWallMsToUtcMs(startOfDayUkMs - diffFromMonday * 24 * 60 * 60 * 1000);
+  }
+
+  return ukWallMsToUtcMs(Date.UTC(year, month, 1));
+}
+
+function getNextBucketStartUtcMs(bucketStartUtcMs: number, timeframe: "1d" | "3d" | "1w" | "1m") {
+  if (timeframe === "1d") return bucketStartUtcMs + 24 * 60 * 60 * 1000;
+  if (timeframe === "3d") return bucketStartUtcMs + 3 * 24 * 60 * 60 * 1000;
+
+  const { year, month, day } = getUkLocalParts(bucketStartUtcMs);
+
+  if (timeframe === "1w") {
+    const startOfWeekUkMs = Date.UTC(year, month, day);
+    return ukWallMsToUtcMs(startOfWeekUkMs + 7 * 24 * 60 * 60 * 1000);
+  }
+
+  return ukWallMsToUtcMs(Date.UTC(year, month + 1, 1));
+}
+
+function getPreviousBucketStartUtcMs(bucketStartUtcMs: number, timeframe: "1d" | "3d" | "1w" | "1m") {
+  if (timeframe === "1d") return bucketStartUtcMs - 24 * 60 * 60 * 1000;
+  if (timeframe === "3d") return bucketStartUtcMs - 3 * 24 * 60 * 60 * 1000;
+
+  const { year, month, day } = getUkLocalParts(bucketStartUtcMs);
+
+  if (timeframe === "1w") {
+    const startOfWeekUkMs = Date.UTC(year, month, day);
+    return ukWallMsToUtcMs(startOfWeekUkMs - 7 * 24 * 60 * 60 * 1000);
+  }
+
+  return ukWallMsToUtcMs(Date.UTC(year, month - 1, 1));
+}
+
+function buildCandles(startCapUC: number, txAsc: Tx[], timeframe: "1d" | "3d" | "1w" | "1m", lookbackBuckets: number): Candle[] {
+  const now = Date.now();
+  const endBucket = getBucketStartUtcMs(now, timeframe);
+  const earliestTx = txAsc[0]?.ts ?? endBucket;
+  const earliestBucket = getBucketStartUtcMs(earliestTx, timeframe);
+
+  const historicalBuckets: number[] = [];
+  let cursor = earliestBucket;
+  let guard = 0;
+  while (cursor <= endBucket && guard < 5000) {
+    historicalBuckets.push(cursor);
+    cursor = getNextBucketStartUtcMs(cursor, timeframe);
+    guard += 1;
+  }
+
+  const effectiveBuckets = Math.max(lookbackBuckets, historicalBuckets.length || 1);
+  const bucketStarts: number[] = [endBucket];
+  while (bucketStarts.length < effectiveBuckets) {
+    bucketStarts.unshift(getPreviousBucketStartUtcMs(bucketStarts[0], timeframe));
+  }
+
+  const startBucket = bucketStarts[0];
+
   let capAtStart = startCapUC;
   for (const tx of txAsc) {
     if (tx.ts >= startBucket) capAtStart -= tx.deltaUC;
@@ -205,7 +275,7 @@ const startBucket = endBucket - bucketMs * (effectiveBuckets - 1);
 
   const bucketMap = new Map<number, Tx[]>();
   for (const tx of txAsc) {
-    const b = floorToBucket(tx.ts, bucketMs);
+    const b = getBucketStartUtcMs(tx.ts, timeframe);
     if (b < startBucket || b > endBucket) continue;
     const arr = bucketMap.get(b) ?? [];
     arr.push(tx);
@@ -213,12 +283,11 @@ const startBucket = endBucket - bucketMs * (effectiveBuckets - 1);
   }
 
   const toPrice = (uc: number) => uc / 10000;
-
   const candles: Candle[] = [];
   let cap = capAtStart;
 
-  for (let b = startBucket; b <= endBucket; b += bucketMs) {
-    const bucketTx = (bucketMap.get(b) ?? []).sort((a, z) => a.ts - z.ts);
+  for (const bucketStart of bucketStarts) {
+    const bucketTx = (bucketMap.get(bucketStart) ?? []).sort((a, z) => a.ts - z.ts);
 
     const open = cap;
     let high = cap;
@@ -230,14 +299,12 @@ const startBucket = endBucket - bucketMs * (effectiveBuckets - 1);
       low = Math.min(low, cap);
     }
 
-    const close = cap;
-
     candles.push({
-      t: b,
+      t: bucketStart,
       o: toPrice(open),
       h: toPrice(high),
       l: toPrice(low),
-      c: toPrice(close),
+      c: toPrice(cap),
     });
   }
 
@@ -620,10 +687,10 @@ function submitBuyActivity() {
 
 
   const candles = useMemo(() => {
-    if (tf === "3d") return buildCandles(store.marketCapUC, txAsc, 3 * 24 * 60 * 60 * 1000, 40);
-    if (tf === "1w") return buildCandles(store.marketCapUC, txAsc, 7 * 24 * 60 * 60 * 1000, 26);
-    if (tf === "1m") return buildCandles(store.marketCapUC, txAsc, 30 * 24 * 60 * 60 * 1000, 18);
-    return buildCandles(store.marketCapUC, txAsc, 24 * 60 * 60 * 1000, 60);
+    if (tf === "3d") return buildCandles(store.marketCapUC, txAsc, "3d", 40);
+    if (tf === "1w") return buildCandles(store.marketCapUC, txAsc, "1w", 26);
+    if (tf === "1m") return buildCandles(store.marketCapUC, txAsc, "1m", 18);
+    return buildCandles(store.marketCapUC, txAsc, "1d", 60);
   }, [tf, store.marketCapUC, txAsc, nowTick]);
 
   const tfChangePct = useMemo(() => {
@@ -1387,23 +1454,16 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     return () => observer.disconnect();
   }, []);
 
-  const bucketMs = useMemo(() => {
-    if (timeframe === "3d") return 3 * 24 * 60 * 60 * 1000;
-    if (timeframe === "1w") return 7 * 24 * 60 * 60 * 1000;
-    if (timeframe === "1m") return 30 * 24 * 60 * 60 * 1000;
-    return 24 * 60 * 60 * 1000;
-  }, [timeframe]);
-
   const txByBucket = useMemo(() => {
     const map = new Map<number, Tx[]>();
     for (const entry of tx) {
-      const bucket = floorToBucket(entry.ts, bucketMs);
+      const bucket = getBucketStartUtcMs(entry.ts, timeframe);
       const list = map.get(bucket) ?? [];
       list.push(entry);
       map.set(bucket, list);
     }
     return map;
-  }, [bucketMs, tx]);
+  }, [timeframe, tx]);
 
   const usablePx = Math.max(1, chartWidth - padding.left - padding.right);
   const minVisible = Math.max(20, Math.ceil(usablePx / (maxCandleWidth / candleWidthRatio)));
@@ -1512,11 +1572,11 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
       }
 
       if (timeframe === "1w") {
-        return new Intl.DateTimeFormat("en-GB", {
+        return `W/C ${new Intl.DateTimeFormat("en-GB", {
           timeZone: "Europe/London",
           day: "2-digit",
           month: "short",
-        }).format(date);
+        }).format(date)}`;
       }
 
       if (timeframe === "3d") {
@@ -1761,9 +1821,9 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   const detailRange = useMemo(() => {
     if (!selectedCandle) return null;
     const start = selectedCandle.t;
-    const end = start + bucketMs;
+    const end = getNextBucketStartUtcMs(start, timeframe);
     return { start, end };
-  }, [bucketMs, selectedCandle]);
+  }, [selectedCandle, timeframe]);
 
   const formatTxLabel = (label: string, deltaUC: number) => {
     const match = label.match(/^(.*)\s\(([^)]+)\)$/);
