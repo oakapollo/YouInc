@@ -928,16 +928,17 @@ function submitBuyActivity() {
               display: "flex",
               gap: 0,
               overflowX: "auto",
-              scrollSnapType: "x mandatory",
+              overflowY: "hidden",
+              scrollSnapType: "x proximity",
               WebkitOverflowScrolling: "touch",
+              overscrollBehaviorX: "contain",
+              touchAction: "auto",
               scrollbarWidth: "none",
               msOverflowStyle: "none",
-              touchAction: "pan-x",
-              overscrollBehaviorX: "contain",
             }}
           >
             <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
-              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none" }}>
+              <div className={styles.list}>
                 {store.goals.length === 0 ? (
                   <EmptyState text="No goals yet. Add one and give it an expiry date." />
                 ) : (
@@ -975,7 +976,7 @@ function submitBuyActivity() {
             </div>
 
             <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
-              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none" }}>
+              <div className={styles.list}>
                 {store.goodHabits.length === 0 ? (
                   <EmptyState text="No good habits yet. Add a habit and choose frequency." />
                 ) : (
@@ -1016,7 +1017,7 @@ function submitBuyActivity() {
             </div>
 
             <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
-              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none" }}>
+              <div className={styles.list}>
                 {store.badHabits.length === 0 ? (
                   <EmptyState text="No bad habits yet. Add one and set an expiry date (or permanent)." />
                 ) : (
@@ -1054,7 +1055,7 @@ function submitBuyActivity() {
             </div>
 
             <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
-              <div className={styles.list} style={{ overflow: "visible", maxHeight: "none" }}>
+              <div className={styles.list}>
                 {store.addictions.length === 0 ? (
                   <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
                 ) : (
@@ -1621,6 +1622,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   const handlePointerDown = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
       if (!data.length) return;
+      if (event.pointerType !== "mouse") return;
       const state = pointerStateRef.current;
       state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
 
@@ -1655,8 +1657,9 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
   const handlePointerMove = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
-      // Pan/zoom logic: horizontal drag pans (offsetFromRight), two-finger pinch scales visibleCount.
+      // Keep touch input free for native page scrolling. Mouse keeps chart hover/pan.
       if (!data.length) return;
+      if (event.pointerType !== "mouse") return;
       const state = pointerStateRef.current;
       if (!state.pointers.has(event.pointerId)) return;
       state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
@@ -1684,28 +1687,14 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
       } else if (!state.isPanning) {
         const dx = event.clientX - state.startX;
         const dy = event.clientY - state.startY;
-        const absDx = Math.abs(dx);
-        const absDy = Math.abs(dy);
-
-        if (absDy > 10 && absDy > absDx) {
-          if (state.longPressTimer) {
-            clearTimeout(state.longPressTimer);
-            state.longPressTimer = null;
-          }
-          return;
-        }
-
-        if (absDx > 12 && absDx > absDy * 1.2) {
+        if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
           state.isPanning = true;
           setAutoFollow(false);
           if (svgRef.current) {
             svgRef.current.setPointerCapture(event.pointerId);
           }
-        } else if (absDx > 6 || absDy > 6) {
-          if (state.longPressTimer) {
-            clearTimeout(state.longPressTimer);
-            state.longPressTimer = null;
-          }
+        } else if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          if (state.longPressTimer) clearTimeout(state.longPressTimer);
         }
       }
 
@@ -1723,6 +1712,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
   const handlePointerUp = useCallback(
     (event: React.PointerEvent<SVGSVGElement>) => {
+      if (event.pointerType !== "mouse") return;
       const state = pointerStateRef.current;
       if (state.longPressTimer) {
         clearTimeout(state.longPressTimer);
@@ -1735,7 +1725,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
         state.isPanning = false;
         state.panPointerId = null;
       }
-      if (svgRef.current?.hasPointerCapture?.(event.pointerId)) {
+      if (svgRef.current) {
         svgRef.current.releasePointerCapture(event.pointerId);
       }
 
@@ -1755,6 +1745,19 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     setHover(null);
     setTooltip(null);
   }, []);
+
+  const handleChartClick = useCallback(
+    (event: React.MouseEvent<SVGSVGElement>) => {
+      if (!data.length) return;
+      const index = getIndexFromClientX(event.clientX);
+      const candle = data[index];
+      if (candle) {
+        setSelectedCandleKey(candle.t);
+        setTooltipForEvent(candle, event.clientX, event.clientY);
+      }
+    },
+    [data, getIndexFromClientX, setTooltipForEvent]
+  );
 
   const handleZoomButton = useCallback(
     (direction: "in" | "out") => {
@@ -1823,7 +1826,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
         </label>
       </div>
 
-      <div className={styles.chartWrap} ref={containerRef} style={{ overflow: "visible" }}>
+      <div className={styles.chartWrap} ref={containerRef}>
         {!data.length ? (
           <div style={{ padding: 12, opacity: 0.7, fontSize: 13 }}>
             No activity yet — hit Complete / Hold buttons to print candles.
@@ -1834,7 +1837,8 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
             className={styles.chartSvg}
             viewBox={`0 0 ${w} ${h}`}
             preserveAspectRatio="none"
-            style={{ width: "100%", height: 280, display: "block", touchAction: "pan-y pinch-zoom" }}
+            style={{ width: "100%", height: 280, display: "block", touchAction: "auto" }}
+            onClick={handleChartClick}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
@@ -1908,7 +1912,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     ) : null}
   </div>
 
-  <div className={`${styles.detailsPanel} ${selectedCandle ? styles.detailsPanelOpen : ""}`} style={{ overflow: "visible", maxHeight: "none" }}>
+  <div className={`${styles.detailsPanel} ${selectedCandle ? styles.detailsPanelOpen : ""}`}>
     <div className={styles.detailsHeader}>
       <div>
         <div className={styles.detailsTitle}>Candle Details</div>
@@ -1927,7 +1931,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
       ) : null}
         </div>
         {selectedCandle ? (
-          <div className={styles.detailsBody} style={{ overflow: "visible", maxHeight: "none" }}>
+          <div className={styles.detailsBody}>
             <div className={styles.detailsStats}>
               <div>
                 <span>Open</span>
@@ -1951,7 +1955,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
               </div>
             </div>
 
-            <div className={styles.txList} style={{ overflow: "visible", maxHeight: "none" }}>
+            <div className={styles.txList}>
               {selectedTx.length ? (
                 selectedTx.map((entry) => {
                   const { title, action } = formatTxLabel(entry.label, entry.deltaUC);
