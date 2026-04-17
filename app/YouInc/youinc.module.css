@@ -538,3 +538,217 @@
 .page {
   -webkit-overflow-scrolling: touch;
 }
+
+.eyebrow {
+  @apply text-[10px] uppercase tracking-[0.24em] text-cyan-200/80;
+}
+
+.heroCard {
+  @apply mt-6 rounded-[28px] ring-1 ring-white/10 p-5 sm:p-6;
+  background:
+    linear-gradient(135deg, rgba(124, 58, 237, 0.14), rgba(45, 212, 191, 0.08)),
+    rgba(255, 255, 255, 0.04);
+  display: grid;
+  gap: 18px;
+}
+
+.heroCopy {
+  @apply flex flex-col gap-2;
+}
+
+.heroTitle {
+  @apply text-xl sm:text-2xl font-semibold leading-tight;
+}
+
+.heroText {
+  @apply text-sm text-white/65 max-w-2xl;
+}
+
+.heroStats {
+  @apply grid grid-cols-2 gap-3 sm:grid-cols-4;
+}
+
+.heroStat {
+  @apply rounded-2xl px-4 py-3 ring-1 ring-white/10;
+  background: rgba(7, 12, 24, 0.6);
+}
+
+.heroStat span {
+  @apply block text-[11px] uppercase tracking-wide text-white/50;
+}
+
+.heroStat strong {
+  @apply mt-1 block text-lg font-semibold text-white;
+}
+
+.heroStat_positive {
+  box-shadow: inset 0 0 0 1px rgba(16, 185, 129, 0.08);
+}
+
+.heroStat_warning {
+  box-shadow: inset 0 0 0 1px rgba(245, 158, 11, 0.08);
+}
+
+.heroStat_danger {
+  box-shadow: inset 0 0 0 1px rgba(244, 63, 94, 0.08);
+}
+
+.tabs {
+  @apply mt-6 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4;
+}
+
+.tab {
+  @apply rounded-2xl px-4 py-3 text-left text-white/70 ring-1 ring-white/10 transition;
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tab small {
+  @apply text-[11px] leading-4 text-white/45;
+}
+
+.panel {
+  @apply mt-4 rounded-3xl ring-1 ring-white/10 p-4 sm:p-6;
+  background: rgba(255, 255, 255, 0.04);
+  backdrop-filter: blur(10px);
+}
+
+.panelHeader {
+  @apply mb-4 flex items-center gap-3;
+}
+
+.panelHeaderCopy {
+  @apply min-w-0 flex-1 text-center;
+}
+
+.panelHeaderTitle {
+  @apply text-lg font-semibold;
+}
+
+.panelHeaderText {
+  @apply mt-1 text-xs text-white/55;
+}
+
+.sectionDots {
+  @apply mt-4 flex justify-center gap-2;
+}
+
+.sectionDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.22);
+  transition: 0.2s ease;
+}
+
+.sectionDotActive {
+  background: rgba(45, 212, 191, 0.95);
+  box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.12);
+}
+
+.chartIntro {
+  @apply mt-10 mb-4 flex flex-col gap-3 rounded-3xl ring-1 ring-white/10 px-4 py-4 sm:flex-row sm:items-center sm:justify-between;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+.chartIntroTitle {
+  @apply text-base font-semibold;
+}
+
+.chartIntroText {
+  @apply mt-1 text-xs text-white/55;
+}
+
+.chartIntroBadge,
+.viewportBadge {
+  @apply inline-flex items-center rounded-full px-3 py-2 text-xs font-medium text-white/75 ring-1 ring-white/10;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.chartMeta {
+  @apply flex items-center gap-2 flex-wrap justify-end;
+}
+
+.loadingState {
+  @apply mt-20 rounded-[28px] ring-1 ring-white/10 p-6 flex items-center gap-4;
+  background: rgba(8, 12, 24, 0.62);
+  max-width: 560px;
+}
+
+.loadingOrb {
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 1), rgba(45, 212, 191, 1));
+  box-shadow: 0 0 30px rgba(124, 58, 237, 0.35);
+  animation: pulseGlow 1.2s ease-in-out infinite alternate;
+}
+
+.loadingTitle {
+  @apply text-base font-semibold;
+}
+
+.loadingText {
+  @apply mt-1 text-sm text-white/55;
+}
+
+@keyframes pulseGlow {
+  from { transform: scale(0.92); opacity: 0.72; }
+  to { transform: scale(1.08); opacity: 1; }
+}
+
+.chartTooltip {
+  @apply pointer-events-none absolute rounded-2xl text-white/90 px-3 py-2 text-xs ring-1 ring-white/10;
+  background: rgba(5, 8, 16, 0.92);
+  transform: translate(-50%, calc(-100% - 10px));
+  backdrop-filter: blur(8px);
+  max-width: min(220px, calc(100% - 24px));
+  z-index: 5;
+}
+
+.iconBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sectionScroller {
+  display: flex;
+  overflow-x: auto;
+  overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  overscroll-behavior-x: contain;
+  gap: 0;
+  padding-bottom: 8px;
+}
+
+.section {
+  min-width: 100%;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+@media (max-width: 767px) {
+  .header {
+    @apply flex-col items-stretch;
+  }
+
+  .headerActions {
+    @apply justify-between;
+  }
+
+  .panelHeaderCopy {
+    text-align: left;
+  }
+
+  .topStats {
+    @apply gap-4;
+  }
+
+  .tfRow {
+    @apply flex-wrap justify-start;
+  }
+}

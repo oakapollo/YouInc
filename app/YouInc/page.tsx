@@ -24,6 +24,13 @@ const SECTION_TITLES: Record<TabKey, string> = {
   addictions: "Addictions",
 };
 
+const SECTION_SUBTITLES: Record<TabKey, string> = {
+  goals: "Track bigger targets with a clear deadline.",
+  good: "Reward consistency and build momentum.",
+  bad: "Treat slip-ups as data, not drama.",
+  addictions: "Monitor relapses and escalating penalties.",
+};
+
 type Goal = { id: string; title: string; expiry: string; createdAt: number };
 
 type GoodHabit = {
@@ -725,6 +732,17 @@ function submitBuyActivity() {
 
   const currentSectionIndex = useMemo(() => SECTION_ORDER.indexOf(tab), [tab]);
   const currentSectionTitle = SECTION_TITLES[tab];
+  const currentSectionSubtitle = SECTION_SUBTITLES[tab];
+
+  const dashboardStats = useMemo(
+    () => [
+      { label: "Goals", value: store.goals.length, tone: "neutral" },
+      { label: "Good", value: store.goodHabits.length, tone: "positive" },
+      { label: "Bad", value: store.badHabits.length, tone: "warning" },
+      { label: "Addictions", value: store.addictions.length, tone: "danger" },
+    ],
+    [store.addictions.length, store.badHabits.length, store.goals.length, store.goodHabits.length]
+  );
 
   function resetFormForTab(nextTab: TabKey) {
     if (nextTab === "goals") {
@@ -844,7 +862,19 @@ function submitBuyActivity() {
 
   // ✅ NOW early returns are safe (ALL hooks above always ran)
   if (loading) {
-    return <div className={styles.page}>Loading…</div>;
+    return (
+      <div className={styles.page}>
+        <div className={styles.shell}>
+          <div className={styles.loadingState}>
+            <div className={styles.loadingOrb} />
+            <div>
+              <div className={styles.loadingTitle}>Loading your dashboard…</div>
+              <div className={styles.loadingText}>Pulling habits, positions, and chart history.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
   if (!user) {
     return null;
@@ -923,9 +953,10 @@ function submitBuyActivity() {
           <div className={styles.brand}>
             <div className={styles.logo} />
             <div className={styles.brandText}>
-            <div className={styles.title}>{user?.displayName ?? user?.email?.split("@")[0] ?? "You"}</div>
-              <div className={styles.subTitle}>{user?.displayName ?? user?.email?.split("@")[0] ?? "You"}</div>    
-                      </div>
+              <div className={styles.eyebrow}>You Inc.</div>
+              <div className={styles.title}>{user?.displayName ?? user?.email?.split("@")[0] ?? "You"}</div>
+              <div className={styles.subTitle}>Your behaviour dashboard, priced like a market.</div>
+            </div>
           </div>
 
           <div className={styles.headerActions}>
@@ -934,46 +965,73 @@ function submitBuyActivity() {
             </a>
             <button className={styles.addBtn} onClick={openModal} type="button">
               <span className={styles.addPlus}>＋</span>
-              Add
+              Add entry
             </button>
           </div>
         </header>
 
         {storeError ? <div className={styles.syncWarning}>{storeError}</div> : null}
-        
-        <section
-          className={styles.panel}
-          style={{ paddingTop: 18 }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 12,
-              marginBottom: 16,
-            }}
-          >
+
+        <section className={styles.heroCard}>
+          <div className={styles.heroCopy}>
+            <div className={styles.heroTitle}>Build momentum. Cut noise. Watch the line react.</div>
+            <div className={styles.heroText}>
+              Good actions push the chart up, relapses and drift pull it down. Keep the loop tight and the feedback obvious.
+            </div>
+          </div>
+
+          <div className={styles.heroStats}>
+            {dashboardStats.map((item) => {
+              const toneClass =
+                item.tone === "positive"
+                  ? styles.heroStat_positive
+                  : item.tone === "warning"
+                  ? styles.heroStat_warning
+                  : item.tone === "danger"
+                  ? styles.heroStat_danger
+                  : "";
+
+              return (
+                <div key={item.label} className={`${styles.heroStat} ${toneClass}`}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
+        <div className={styles.tabs} role="tablist" aria-label="You Inc sections">
+          {SECTION_ORDER.map((key) => (
+            <button
+              key={key}
+              type="button"
+              role="tab"
+              aria-selected={tab === key}
+              className={`${styles.tab} ${tab === key ? styles.tabActive : ""}`}
+              onClick={() => switchTab(key)}
+            >
+              <span>{SECTION_TITLES[key]}</span>
+              <small>{SECTION_SUBTITLES[key]}</small>
+            </button>
+          ))}
+        </div>
+
+        <section className={styles.panel}>
+          <div className={styles.panelHeader}>
             <button
               className={styles.iconBtn}
               onClick={() => stepSection(-1)}
               type="button"
               aria-label="Previous section"
               disabled={currentSectionIndex === 0}
-              style={{ minWidth: 44, opacity: currentSectionIndex === 0 ? 0.45 : 1 }}
             >
               {"<"}
             </button>
 
-            <div
-              style={{
-                fontSize: 18,
-                fontWeight: 700,
-                textAlign: "center",
-                flex: 1,
-              }}
-            >
-              {currentSectionTitle}
+            <div className={styles.panelHeaderCopy}>
+              <div className={styles.panelHeaderTitle}>{currentSectionTitle}</div>
+              <div className={styles.panelHeaderText}>{currentSectionSubtitle}</div>
             </div>
 
             <button
@@ -982,14 +1040,12 @@ function submitBuyActivity() {
               type="button"
               aria-label="Next section"
               disabled={currentSectionIndex === SECTION_ORDER.length - 1}
-              style={{ minWidth: 44, opacity: currentSectionIndex === SECTION_ORDER.length - 1 ? 0.45 : 1 }}
             >
               {">"}
             </button>
           </div>
 
-          <div
-            ref={sectionScrollerRef}
+          <div ref={sectionScrollerRef} onScroll={handleSectionScroll} className={styles.sectionScroller}
             onScroll={handleSectionScroll}
             style={{
               display: "flex",
@@ -1001,7 +1057,7 @@ function submitBuyActivity() {
               msOverflowStyle: "none",
             }}
           >
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+            <div className={styles.section}>
               <div className={styles.list}>
                 {store.goals.length === 0 ? (
                   <EmptyState text="No goals yet. Add one and give it an expiry date." />
@@ -1039,7 +1095,7 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+            <div className={styles.section}>
               <div className={styles.list}>
                 {store.goodHabits.length === 0 ? (
                   <EmptyState text="No good habits yet. Add a habit and choose frequency." />
@@ -1080,7 +1136,7 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+            <div className={styles.section}>
               <div className={styles.list}>
                 {store.badHabits.length === 0 ? (
                   <EmptyState text="No bad habits yet. Add one and set an expiry date (or permanent)." />
@@ -1118,7 +1174,7 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div style={{ minWidth: "100%", scrollSnapAlign: "start" }}>
+            <div className={styles.section}>
               <div className={styles.list}>
                 {store.addictions.length === 0 ? (
                   <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
@@ -1179,24 +1235,25 @@ function submitBuyActivity() {
             </div>
           </div>
 
-          <div style={{ display: "flex", justifyContent: "center", gap: 8, marginTop: 14 }}>
+          <div className={styles.sectionDots}>
             {SECTION_ORDER.map((key) => (
               <button
                 key={key}
                 type="button"
                 onClick={() => switchTab(key)}
                 aria-label={`Go to ${SECTION_TITLES[key]}`}
-                style={{
-                  width: 8,
-                  height: 8,
-                  borderRadius: 999,
-                  border: "none",
-                  background: key === tab ? "rgba(45,212,191,0.95)" : "rgba(255,255,255,0.22)",
-                  boxShadow: key === tab ? "0 0 0 4px rgba(45,212,191,0.12)" : "none",
-                }}
+                className={`${styles.sectionDot} ${key === tab ? styles.sectionDotActive : ""}`}
               />
             ))}
           </div>
+        </section>
+
+        <section className={styles.chartIntro}>
+          <div>
+            <div className={styles.chartIntroTitle}>Behaviour chart</div>
+            <div className={styles.chartIntroText}>Zoom, pan, tap candles, and inspect the actions that moved your price.</div>
+          </div>
+          <div className={styles.chartIntroBadge}>{candles.length} candles loaded</div>
         </section>
 
         {/* CHART BELOW PANEL */}
@@ -1510,7 +1567,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     if (!visibleData.length) return { min: 0.9, max: 1.1 };
     let mn = Infinity;
     let mx = -Infinity;
-    for (const d of data) {
+    for (const d of visibleData) {
       mn = Math.min(mn, d.l);
       mx = Math.max(mx, d.h);
     }
@@ -1825,6 +1882,14 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     return { start, end };
   }, [selectedCandle, timeframe]);
 
+  useEffect(() => {
+    if (!selectedCandleKey) return;
+    const exists = data.some((entry) => entry.t === selectedCandleKey);
+    if (!exists) {
+      setSelectedCandleKey(null);
+    }
+  }, [data, selectedCandleKey]);
+
   const formatTxLabel = (label: string, deltaUC: number) => {
     const match = label.match(/^(.*)\s\(([^)]+)\)$/);
     if (match) return { title: match[1], action: match[2] };
@@ -1857,14 +1922,17 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
             Reset
           </button>
         </div>
-        <label className={styles.autoFollow}>
-          <input
-            type="checkbox"
-            checked={autoFollow}
-            onChange={(event) => setAutoFollow(event.target.checked)}
-          />
-          Auto-follow latest
-        </label>
+        <div className={styles.chartMeta}>
+          <div className={styles.viewportBadge}>{visibleData.length} visible</div>
+          <label className={styles.autoFollow}>
+            <input
+              type="checkbox"
+              checked={autoFollow}
+              onChange={(event) => setAutoFollow(event.target.checked)}
+            />
+            Auto-follow latest
+          </label>
+        </div>
       </div>
 
       <div className={styles.chartWrap} ref={containerRef}>
