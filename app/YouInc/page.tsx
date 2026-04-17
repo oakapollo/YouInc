@@ -1045,8 +1045,10 @@ function submitBuyActivity() {
             </button>
           </div>
 
-          <div ref={sectionScrollerRef} onScroll={handleSectionScroll} className={styles.sectionScroller}
-            onScroll={handleSectionScroll}
+<div
+  ref={sectionScrollerRef}
+  onScroll={handleSectionScroll}
+  className={styles.sectionScroller}
             style={{
               display: "flex",
               gap: 0,
