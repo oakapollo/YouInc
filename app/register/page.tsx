@@ -74,7 +74,7 @@ export default function RegisterPage() {
               className={styles.input}
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="e.g., Rihards"
+              placeholder="e.g., John"
               autoComplete="nickname"
             />
           </label>
