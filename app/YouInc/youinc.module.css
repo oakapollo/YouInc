@@ -485,25 +485,6 @@
   @apply text-xs text-white/55;
 }
 
-.sectionScroller {
-  display: flex;
-  overflow-x: auto;
-  overflow-y: visible;
-  -webkit-overflow-scrolling: touch;
-  scroll-snap-type: x proximity;
-  overscroll-behavior-x: contain;
-  gap: 16px;
-  padding-bottom: 8px;
-}
-
-.sectionScroller::-webkit-scrollbar {
-  display: none;
-}
-
-.section {
-  min-width: 100%;
-  scroll-snap-align: start;
-}
 
 .todayChange {
   display: inline-flex;
@@ -526,18 +507,6 @@
   color: rgba(251, 113, 133, 0.95);
 }
 
-.chartWrap,
-.panel,
-.card,
-.detailsPanel,
-.sectionScroller {
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-}
-
-.page {
-  -webkit-overflow-scrolling: touch;
-}
 
 .eyebrow {
   @apply text-[10px] uppercase tracking-[0.24em] text-cyan-200/80;
@@ -716,19 +685,28 @@
 
 .sectionScroller {
   display: flex;
+  gap: 0;
   overflow-x: auto;
   overflow-y: visible;
   -webkit-overflow-scrolling: touch;
-  scroll-snap-type: x mandatory;
+  scroll-snap-type: x proximity;
   overscroll-behavior-x: contain;
-  gap: 0;
+  overscroll-behavior-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  touch-action: pan-x;
+  isolation: isolate;
+  contain: layout paint;
   padding-bottom: 8px;
+}
+
+.sectionScroller::-webkit-scrollbar {
+  display: none;
 }
 
 .section {
   min-width: 100%;
   scroll-snap-align: start;
-  scroll-snap-stop: always;
 }
 
 @media (max-width: 767px) {
@@ -751,4 +729,20 @@
   .tfRow {
     @apply flex-wrap justify-start;
   }
+}
+
+
+.addBtn,
+.secondaryBtn,
+.tab,
+.actionPrimary,
+.actionWarn,
+.actionDanger,
+.iconBtn,
+.ghostBtn,
+.primaryBtn,
+.tfBtn,
+.chartBtn,
+.sectionDot {
+  touch-action: manipulation;
 }

@@ -1049,16 +1049,8 @@ function submitBuyActivity() {
   ref={sectionScrollerRef}
   onScroll={handleSectionScroll}
   className={styles.sectionScroller}
-            style={{
-              display: "flex",
-              gap: 0,
-              overflowX: "auto",
-              scrollSnapType: "x mandatory",
-              WebkitOverflowScrolling: "touch",
-              scrollbarWidth: "none",
-              msOverflowStyle: "none",
-            }}
-          >
+>
+
             <div className={styles.section}>
               <div className={styles.list}>
                 {store.goals.length === 0 ? (
