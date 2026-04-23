@@ -2,6 +2,7 @@
 
 import { applyTaxes, getUkOffsetMinutes, isMarketOpen, type DeltaKind } from "./rules";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, motion, type PanInfo } from "framer-motion";
 import styles from "./youinc.module.css";
 import { useAuth } from "../providers";
 import { useRouter } from "next/navigation";
@@ -80,6 +81,103 @@ type AddictionChargeState = {
   lastSoldTs: number | null;
   reachedMax: boolean;
 };
+
+
+type BurstTone = "positive" | "negative" | "neutral";
+type ActionBurst = { id: string; label: string; tone: BurstTone };
+
+function AnimatedCounter({ value }: { value: number }) {
+  return (
+    <AnimatePresence mode="popLayout" initial={false}>
+      <motion.strong
+        key={value}
+        initial={{ opacity: 0, y: 10, scale: 0.96 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -10, scale: 1.02 }}
+        transition={{ duration: 0.22, ease: "easeOut" }}
+      >
+        {value}
+      </motion.strong>
+    </AnimatePresence>
+  );
+}
+
+function PressableButton({
+  children,
+  className,
+  onClick,
+  type = "button",
+  disabled,
+  title,
+  ariaLabel,
+}: {
+  children: React.ReactNode;
+  className: string;
+  onClick?: () => void;
+  type?: "button" | "submit" | "reset";
+  disabled?: boolean;
+  title?: string;
+  ariaLabel?: string;
+}) {
+  return (
+    <motion.button
+      className={className}
+      type={type}
+      onClick={onClick}
+      disabled={disabled}
+      title={title}
+      aria-label={ariaLabel}
+      whileTap={{ scale: 0.96 }}
+      whileHover={{ y: -1 }}
+      transition={{ type: "spring", stiffness: 420, damping: 28 }}
+    >
+      {children}
+    </motion.button>
+  );
+}
+
+function SwipeableCard({
+  children,
+  onSwipeLeft,
+  onSwipeRight,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  onSwipeLeft?: () => void;
+  onSwipeRight?: () => void;
+  tone?: "neutral" | "good" | "bad" | "addiction";
+}) {
+  const threshold = 92;
+
+  return (
+    <motion.div
+      className={`${styles.card} ${
+        tone === "good"
+          ? styles.cardToneGood
+          : tone === "bad"
+          ? styles.cardToneBad
+          : tone === "addiction"
+          ? styles.cardToneAddiction
+          : ""
+      }`}
+      drag="x"
+      dragConstraints={{ left: 0, right: 0 }}
+      dragElastic={0.18}
+      whileTap={{ scale: 0.992 }}
+      initial={{ opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: "spring", stiffness: 300, damping: 28 }}
+      onDragEnd={(_, info: PanInfo) => {
+        if (info.offset.x <= -threshold) onSwipeLeft?.();
+        if (info.offset.x >= threshold) onSwipeRight?.();
+      }}
+    >
+      <div className={styles.swipeHintLeft}>Sold</div>
+      <div className={styles.swipeHintRight}>Hold</div>
+      {children}
+    </motion.div>
+  );
+}
 
 function getAddictionSoldLabel(title: string) {
   return `${title} (Addiction · Sold)`;
@@ -378,6 +476,7 @@ export default function YouIncPage() {
   const sectionSnapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const [buyActivity, setBuyActivity] = useState("");
+  const [actionBursts, setActionBursts] = useState<ActionBurst[]>([]);
 
   const [store, setStore] = useState<Store>({
     marketCapUC: 10000, // 10000 UC = 1.000 U$
@@ -926,6 +1025,21 @@ function submitBuyActivity() {
     resetFormForTab("addictions");
   }
 
+
+  function pushActionBurst(label: string, tone: BurstTone) {
+    const id = uid();
+    setActionBursts((prev) => [...prev, { id, label, tone }]);
+    window.setTimeout(() => {
+      setActionBursts((prev) => prev.filter((item) => item.id !== id));
+    }, 1200);
+  }
+
+  function runAction(deltaUC: number, tone: BurstTone, callback: () => void) {
+    callback();
+    const prefix = deltaUC > 0 ? "+" : "";
+    pushActionBurst(`${prefix}${deltaUC} UC`, tone);
+  }
+
   function removeItem(kind: TabKey, id: string) {
     if (kind === "goals") setStore((s) => ({ ...s, goals: s.goals.filter((x) => x.id !== id) }));
     if (kind === "good") setStore((s) => ({ ...s, goodHabits: s.goodHabits.filter((x) => x.id !== id) }));
@@ -949,30 +1063,38 @@ function submitBuyActivity() {
       <div className={styles.glowC} />
 
       <div className={styles.shell}>
-        <header className={styles.header}>
+        <motion.header
+          className={styles.header}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.34, ease: "easeOut" }}
+        >
           <div className={styles.brand}>
             <div className={styles.logo} />
             <div className={styles.brandText}>
-              <div className={styles.eyebrow}>You Inc.</div>
+              <div className={styles.headerMetaRow}>
+                <div className={styles.eyebrow}>You Inc.</div>
+                <div className={styles.livePill}><span className={styles.liveDot} /> Live</div>
+              </div>
               <div className={styles.title}>{user?.displayName ?? user?.email?.split("@")[0] ?? "You"}</div>
               <div className={styles.subTitle}>Your behaviour dashboard, priced like a market.</div>
             </div>
           </div>
 
           <div className={styles.headerActions}>
-            <a className={styles.secondaryBtn} href="/logout">
+            <motion.a className={styles.secondaryBtn} href="/logout" whileTap={{ scale: 0.96 }} whileHover={{ y: -1 }}>
               Switch account
-            </a>
-            <button className={styles.addBtn} onClick={openModal} type="button">
+            </motion.a>
+            <PressableButton className={`${styles.addBtn} ${styles.pressablePrimary}`} onClick={openModal}>
               <span className={styles.addPlus}>＋</span>
               Add entry
-            </button>
+            </PressableButton>
           </div>
-        </header>
+        </motion.header>
 
         {storeError ? <div className={styles.syncWarning}>{storeError}</div> : null}
 
-        <section className={styles.heroCard}>
+        <motion.section className={styles.heroCard} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.36, delay: 0.05 }}>
           <div className={styles.heroCopy}>
             <div className={styles.heroTitle}>Build momentum. Cut noise. Watch the line react.</div>
             <div className={styles.heroText}>
@@ -994,30 +1116,39 @@ function submitBuyActivity() {
               return (
                 <div key={item.label} className={`${styles.heroStat} ${toneClass}`}>
                   <span>{item.label}</span>
-                  <strong>{item.value}</strong>
+                  <AnimatedCounter value={item.value} />
                 </div>
               );
             })}
           </div>
-        </section>
+        </motion.section>
 
-        <div className={styles.tabs} role="tablist" aria-label="You Inc sections">
+        <motion.div
+          className={styles.tabs}
+          role="tablist"
+          aria-label="You Inc sections"
+          initial={{ opacity: 0, y: 12 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.34, delay: 0.1 }}
+        >
           {SECTION_ORDER.map((key) => (
-            <button
+            <motion.button
               key={key}
               type="button"
               role="tab"
               aria-selected={tab === key}
               className={`${styles.tab} ${tab === key ? styles.tabActive : ""}`}
               onClick={() => switchTab(key)}
+              whileTap={{ scale: 0.97 }}
+              whileHover={{ y: -1 }}
             >
               <span>{SECTION_TITLES[key]}</span>
               <small>{SECTION_SUBTITLES[key]}</small>
-            </button>
+            </motion.button>
           ))}
-        </div>
+        </motion.div>
 
-        <section className={styles.panel}>
+        <motion.section className={styles.panel} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.36, delay: 0.14 }}>
           <div className={styles.panelHeader}>
             <button
               className={styles.iconBtn}
@@ -1057,7 +1188,12 @@ function submitBuyActivity() {
                   <EmptyState text="No goals yet. Add one and give it an expiry date." />
                 ) : (
                   store.goals.map((g) => (
-                    <div key={g.id} className={styles.card}>
+                    <SwipeableCard
+                      key={g.id}
+                      tone="neutral"
+                      onSwipeRight={() => runAction(400, "positive", () => applyDelta("goal", `${g.title} (Goal · Complete)`, +400))}
+                      onSwipeLeft={() => runAction(-200, "negative", () => applyDelta("goal", `${g.title} (Goal · Failed)`, -200))}
+                    >
                       <div className={styles.cardMain}>
                         <div className={styles.cardTitle}>{g.title}</div>
                         <div className={styles.metaRow}>
@@ -1065,25 +1201,23 @@ function submitBuyActivity() {
                         </div>
                       </div>
                       <div className={styles.cardActions}>
-                        <button
-                          className={styles.actionPrimary}
-                          onClick={() => applyDelta("goal", `${g.title} (Goal · Complete)`, +400)}
-                          type="button"
+                        <PressableButton
+                          className={`${styles.actionPrimary} ${styles.pressablePositive}`}
+                          onClick={() => runAction(400, "positive", () => applyDelta("goal", `${g.title} (Goal · Complete)`, +400))}
                         >
                           Complete <span className={styles.delta}>+400 UC</span>
-                        </button>
-                        <button
-                          className={styles.actionDanger}
-                          onClick={() => applyDelta("goal", `${g.title} (Goal · Failed)`, -200)}
-                          type="button"
+                        </PressableButton>
+                        <PressableButton
+                          className={`${styles.actionDanger} ${styles.pressableNegative}`}
+                          onClick={() => runAction(-200, "negative", () => applyDelta("goal", `${g.title} (Goal · Failed)`, -200))}
                         >
                           Failed <span className={styles.delta}>-200 UC</span>
-                        </button>
-                        <button className={styles.iconBtn} onClick={() => removeItem("goals", g.id)} title="Remove" type="button">
+                        </PressableButton>
+                        <PressableButton className={styles.iconBtn} onClick={() => removeItem("goals", g.id)} title="Remove">
                           ✕
-                        </button>
+                        </PressableButton>
                       </div>
-                    </div>
+                    </SwipeableCard>
                   ))
                 )}
               </div>
@@ -1095,7 +1229,12 @@ function submitBuyActivity() {
                   <EmptyState text="No good habits yet. Add a habit and choose frequency." />
                 ) : (
                   store.goodHabits.map((h) => (
-                    <div key={h.id} className={styles.card}>
+                    <SwipeableCard
+                      key={h.id}
+                      tone="good"
+                      onSwipeRight={() => runAction(getPreviewDelta("good", 100), "positive", () => applyDelta("good", `${h.title} (Good habit · Hold)`, +100))}
+                      onSwipeLeft={() => runAction(-50, "negative", () => applyDelta("good", `${h.title} (Good habit · Sold)`, -50))}
+                    >
                       <div className={styles.cardMain}>
                         <div className={styles.cardTitle}>{h.title}</div>
                         <div className={styles.metaRow}>
@@ -1106,25 +1245,23 @@ function submitBuyActivity() {
                         </div>
                       </div>
                       <div className={styles.cardActions}>
-                        <button
-                          className={styles.actionPrimary}
-                          onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +100)}
-                          type="button"
+                        <PressableButton
+                          className={`${styles.actionPrimary} ${styles.pressablePositive}`}
+                          onClick={() => runAction(getPreviewDelta("good", 100), "positive", () => applyDelta("good", `${h.title} (Good habit · Hold)`, +100))}
                         >
                           Hold <span className={styles.delta}>+{getPreviewDelta("good", 100)} UC</span>
-                        </button>
-                        <button
-                          className={styles.actionDanger}
-                          onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -50)}
-                          type="button"
+                        </PressableButton>
+                        <PressableButton
+                          className={`${styles.actionDanger} ${styles.pressableNegative}`}
+                          onClick={() => runAction(-50, "negative", () => applyDelta("good", `${h.title} (Good habit · Sold)`, -50))}
                         >
                           Sold <span className={styles.delta}>-50 UC</span>
-                        </button>
-                        <button className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove" type="button">
+                        </PressableButton>
+                        <PressableButton className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove">
                           ✕
-                        </button>
+                        </PressableButton>
                       </div>
-                    </div>
+                    </SwipeableCard>
                   ))
                 )}
               </div>
@@ -1136,7 +1273,12 @@ function submitBuyActivity() {
                   <EmptyState text="No bad habits yet. Add one and set an expiry date (or permanent)." />
                 ) : (
                   store.badHabits.map((b) => (
-                    <div key={b.id} className={styles.card}>
+                    <SwipeableCard
+                      key={b.id}
+                      tone="bad"
+                      onSwipeRight={() => runAction(getPreviewDelta("bad", 100), "positive", () => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +100))}
+                      onSwipeLeft={() => runAction(-50, "negative", () => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -50))}
+                    >
                       <div className={styles.cardMain}>
                         <div className={styles.cardTitle}>{b.title}</div>
                         <div className={styles.metaRow}>
@@ -1144,25 +1286,23 @@ function submitBuyActivity() {
                         </div>
                       </div>
                       <div className={styles.cardActions}>
-                        <button
-                          className={styles.actionPrimary}
-                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +100)}
-                          type="button"
+                        <PressableButton
+                          className={`${styles.actionPrimary} ${styles.pressablePositive}`}
+                          onClick={() => runAction(getPreviewDelta("bad", 100), "positive", () => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +100))}
                         >
                           Hold <span className={styles.delta}>+{getPreviewDelta("bad", 100)} UC</span>
-                        </button>
-                        <button
-                          className={styles.actionDanger}
-                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -50)}
-                          type="button"
+                        </PressableButton>
+                        <PressableButton
+                          className={`${styles.actionDanger} ${styles.pressableNegative}`}
+                          onClick={() => runAction(-50, "negative", () => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -50))}
                         >
                           Sold <span className={styles.delta}>-50 UC</span>
-                        </button>
-                        <button className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove" type="button">
+                        </PressableButton>
+                        <PressableButton className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove">
                           ✕
-                        </button>
+                        </PressableButton>
                       </div>
-                    </div>
+                    </SwipeableCard>
                   ))
                 )}
               </div>
@@ -1183,45 +1323,47 @@ function submitBuyActivity() {
                         : "Base penalty active";
 
                     return (
-                      <div key={a.id} className={styles.card}>
+                      <SwipeableCard
+                        key={a.id}
+                        tone="addiction"
+                        onSwipeRight={() => runAction(getPreviewDelta("addiction", 200), "positive", () => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200))}
+                        onSwipeLeft={() => runAction(-soldPenalty, "negative", () => applyAddictionSold(a))}
+                      >
                         <div className={styles.cardMain}>
                           <div className={styles.cardTitle}>{a.title}</div>
                           <div className={styles.metaRow}>
                             <span className={styles.metaPill}>No expiry</span>
-                            <span className={styles.metaPill}>Current sold: -{soldPenalty} UC</span>
-                            <span className={styles.metaPill}>{reductionText}</span>
-                            {chargeState.reachedMax ? <span className={styles.metaPill}>Max escalation</span> : null}
+                            <span className={`${styles.metaPill} ${styles.metaPillDanger}`}>Current sold: -{soldPenalty} UC</span>
+                            <span className={`${styles.metaPill} ${styles.metaPillTimer}`}>{reductionText}</span>
+                            {chargeState.reachedMax ? <span className={`${styles.metaPill} ${styles.metaPillDanger}`}>Max escalation</span> : null}
                           </div>
                         </div>
                         <div className={styles.cardActions}>
-                          <button
-                            className={styles.actionPrimary}
-                            onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200)}
-                            type="button"
+                          <PressableButton
+                            className={`${styles.actionPrimary} ${styles.pressablePositive}`}
+                            onClick={() => runAction(getPreviewDelta("addiction", 200), "positive", () => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200))}
                           >
                             Hold <span className={styles.delta}>+{getPreviewDelta("addiction", 200)} UC</span>
-                          </button>
-                          <button
-                            className={styles.actionDanger}
-                            onClick={() => applyAddictionSold(a)}
-                            type="button"
+                          </PressableButton>
+                          <PressableButton
+                            className={`${styles.actionDanger} ${styles.pressableNegative}`}
+                            onClick={() => runAction(-soldPenalty, "negative", () => applyAddictionSold(a))}
                           >
                             Sold <span className={styles.delta}>-{soldPenalty} UC</span>
-                          </button>
-                          <button
+                          </PressableButton>
+                          <PressableButton
                             className={styles.ghostBtn}
-                            onClick={() => resetAddictionCharges(a)}
-                            type="button"
+                            onClick={() => runAction(0, "neutral", () => resetAddictionCharges(a))}
                             disabled={!resetEnabled}
                             title="Reset escalation back to base penalty"
                           >
                             Reset charges
-                          </button>
-                          <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button">
+                          </PressableButton>
+                          <PressableButton className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove">
                             ✕
-                          </button>
+                          </PressableButton>
                         </div>
-                      </div>
+                      </SwipeableCard>
                     );
                   })
                 )}
@@ -1240,21 +1382,21 @@ function submitBuyActivity() {
               />
             ))}
           </div>
-        </section>
+        </motion.section>
 
-        <section className={styles.chartIntro}>
+        <motion.section className={styles.chartIntro} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.36, delay: 0.18 }}>
           <div>
             <div className={styles.chartIntroTitle}>Behaviour chart</div>
             <div className={styles.chartIntroText}>Zoom, pan, tap candles, and inspect the actions that moved your price.</div>
           </div>
           <div className={styles.chartIntroBadge}>{candles.length} candles loaded</div>
-        </section>
+        </motion.section>
 
         {/* CHART BELOW PANEL */}
-        <section className={styles.topStats}>
+        <motion.section className={styles.topStats} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.36, delay: 0.22 }}>
           <div className={styles.statBlock}>
             <div className={styles.statLabel}>Market Cap</div>
-            <div className={styles.statValue}>{store.marketCapUC.toLocaleString()} UC</div>
+            <div className={styles.statValue}><AnimatedCounter value={store.marketCapUC} /> <span className={styles.statSuffix}>UC</span></div>
           </div>
 
           <div className={styles.statBlock}>
@@ -1272,7 +1414,7 @@ function submitBuyActivity() {
       }}
       title={`Change over ${tf.toUpperCase()}`}
     >
-      {tfChangeLabel}
+      {`${tfChangeLabel} ${tf === "1d" ? "today" : tf.toUpperCase()}`}
     </span>
   </div>
 </div>
@@ -1302,7 +1444,22 @@ function submitBuyActivity() {
               1M
             </button>
           </div>
-        </section>
+        </motion.section>
+
+        <AnimatePresence>
+          {actionBursts.map((burst) => (
+            <motion.div
+              key={burst.id}
+              className={`${styles.actionBurst} ${burst.tone === "positive" ? styles.actionBurstPositive : burst.tone === "negative" ? styles.actionBurstNegative : ""}`}
+              initial={{ opacity: 0, y: 16, scale: 0.9 }}
+              animate={{ opacity: 1, y: -10, scale: 1 }}
+              exit={{ opacity: 0, y: -28, scale: 1.02 }}
+              transition={{ duration: 0.7, ease: "easeOut" }}
+            >
+              {burst.label}
+            </motion.div>
+          ))}
+        </AnimatePresence>
 
         {isBuyOpen && (
           <div className={styles.helperBox} style={{ marginBottom: 12 }}>
