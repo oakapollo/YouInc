@@ -392,7 +392,7 @@ export default function GuestPage() {
                   <label className={styles.label}>Habit<input className={styles.input} value={goodTitle} onChange={(e) => setGoodTitle(e.target.value)} autoFocus /></label>
                   <div className={styles.row2}>
                     <label className={styles.label}>Frequency<select className={styles.input} value="daily" disabled><option>Every day</option></select></label>
-                    <label className={styles.label}>Notes<input className={styles.input} value="Guest onboarding example" readOnly /></label>
+                    <label className={styles.label}>Notes<input className={styles.input} value="tracking habits is also a habit" readOnly /></label>
                   </div>
                 </div>
               </div>
