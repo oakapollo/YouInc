@@ -1259,3 +1259,15 @@ select.input {
     min-height: 300px;
   }
 }
+/* Keeps the tutorial finger attached to the actual last candle inside the SVG coordinate system. */
+.guestChartPointer {
+  font-size: 34px;
+  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
+  pointer-events: none;
+  animation: guestChartPointerFloat 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes guestChartPointerFloat {
+  from { transform: translateY(-3px); }
+  to { transform: translateY(7px); }
+}

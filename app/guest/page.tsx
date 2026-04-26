@@ -727,22 +727,23 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, pointerText, 
   const activeY = active ? y(active.c) : null;
   const latestIndex = latest ? candles.findIndex((c) => c.t === latest.t) : -1;
   const pointerX = latestIndex >= 0 ? padding.left + latestIndex * xStep + xStep / 2 : w * 0.78;
-  const pointerY = latest ? y(latest.h) : h * 0.35;
-  const pointerLeft = `${(pointerX / w) * 100}%`;
-  const pointerTop = `${(Math.max(22, pointerY - 18) / h) * 100}%`;
+  const pointerY = latest ? Math.max(padding.top + 24, y(latest.h) - 14) : h * 0.35;
 
   return (
     <div className={styles.chartWrap}>
-      {shouldPulse ? (
-        <div
-          className={styles.guestPointer}
-          style={{ left: pointerLeft, top: pointerTop, right: "auto" }}
-          aria-hidden="true"
-        >
-          {pointerText}
-        </div>
-      ) : null}
       <svg className={styles.chartSvg} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Guest progress chart" onMouseLeave={() => setHovered(null)}>
+        {shouldPulse ? (
+          <text
+            className={styles.guestChartPointer}
+            x={pointerX}
+            y={pointerY}
+            textAnchor="middle"
+            dominantBaseline="middle"
+            aria-hidden="true"
+          >
+            {pointerText}
+          </text>
+        ) : null}
         <line x1={padding.left} x2={w - padding.right} y1={h - padding.bottom} y2={h - padding.bottom} stroke="rgba(255,255,255,0.12)" />
 
         {activeX !== null && activeY !== null ? (
