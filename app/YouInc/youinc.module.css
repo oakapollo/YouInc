@@ -1042,3 +1042,252 @@
     border-radius: 18px;
   }
 }
+
+/* --- Guest tutorial engine / safe additions only --- */
+.input {
+  font-size: 16px;
+}
+
+.guestPulse {
+  position: relative;
+  isolation: isolate;
+  animation: guestPulseRing 1.05s ease-in-out infinite;
+  box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.65), 0 0 28px rgba(124, 58, 237, 0.38) !important;
+}
+
+.guestPulse::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: inherit;
+  border: 2px solid rgba(45, 212, 191, 0.72);
+  pointer-events: none;
+  animation: guestPulseOutline 1.05s ease-in-out infinite;
+}
+
+@keyframes guestPulseRing {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-1px) scale(1.025); }
+}
+
+@keyframes guestPulseOutline {
+  0% { opacity: 0.9; transform: scale(0.98); }
+  100% { opacity: 0.05; transform: scale(1.1); }
+}
+
+.guestGuideBox {
+  margin: 0 0 12px 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 24px;
+  border: 1px solid rgba(45, 212, 191, 0.22);
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.11), rgba(124, 58, 237, 0.12)), rgba(8, 12, 24, 0.82);
+  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.28);
+}
+
+.guestCoachCard {
+  position: fixed;
+  left: 16px;
+  right: 16px;
+  bottom: calc(74px + env(safe-area-inset-bottom));
+  z-index: 75;
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 14px 16px;
+  border-radius: 24px;
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  background: rgba(5, 8, 16, 0.94);
+  color: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.5), 0 0 35px rgba(45, 212, 191, 0.12);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  pointer-events: none;
+  animation: guestCoachIn 0.24s ease both;
+}
+
+.guestCoachKicker {
+  margin-bottom: 4px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(165, 243, 252, 0.9);
+}
+
+.guestCoachTitle {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.guestCoachText {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+@keyframes guestCoachIn {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.guestBottomBar {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  z-index: 76;
+  max-width: 620px;
+  margin: 0 auto;
+  padding: 13px 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 212, 191, 0.28);
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.16), rgba(124, 58, 237, 0.16)), rgba(5, 8, 16, 0.95);
+  color: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  pointer-events: none;
+  animation: guestBottomBarPulse 1.2s ease-in-out infinite alternate;
+}
+
+@keyframes guestBottomBarPulse {
+  from { transform: translateY(0); filter: brightness(1); }
+  to { transform: translateY(-2px); filter: brightness(1.15); }
+}
+
+.guestPointer {
+  position: absolute;
+  right: 34px;
+  top: 10px;
+  z-index: 8;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 212, 191, 0.24);
+  background: rgba(5, 8, 16, 0.86);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 800;
+  animation: guestFloat 0.9s ease-in-out infinite alternate;
+}
+
+@keyframes guestFloat {
+  from { transform: translateY(0); }
+  to { transform: translateY(7px); }
+}
+
+.guestCandlePulse rect,
+.guestCandlePulse line {
+  filter: drop-shadow(0 0 10px rgba(45, 212, 191, 0.85));
+  animation: guestChartGlow 1s ease-in-out infinite alternate;
+}
+
+.selectedChartPoint rect,
+.selectedChartPoint line {
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.72));
+}
+
+@keyframes guestChartGlow {
+  from { opacity: 0.72; }
+  to { opacity: 1; }
+}
+
+.chartCrosshair line {
+  stroke: rgba(255, 255, 255, 0.32);
+  stroke-width: 1.5;
+  stroke-dasharray: 7 7;
+}
+
+.guestPerformanceBox {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.guestPerformanceBox > div {
+  border-radius: 18px;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.guestPerformanceBox span {
+  display: block;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.guestPerformanceBox strong {
+  display: block;
+  margin-top: 5px;
+  font-size: 15px;
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.goalCelebration {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+
+.goalBurst {
+  position: relative;
+  z-index: 2;
+  padding: 18px 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(45, 212, 191, 0.34);
+  background: rgba(5, 8, 16, 0.92);
+  color: rgba(167, 243, 208, 1);
+  font-size: 26px;
+  font-weight: 900;
+  box-shadow: 0 0 80px rgba(45, 212, 191, 0.32);
+  animation: goalBurstPop 1.2s ease both;
+}
+
+.goalCelebration span {
+  position: absolute;
+  width: 9px;
+  height: 22px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(45, 212, 191, 1), rgba(124, 58, 237, 1));
+  transform: rotate(calc(var(--i) * 20deg)) translateY(-20px);
+  animation: goalConfetti 1.2s ease-out both;
+}
+
+@keyframes goalBurstPop {
+  0% { opacity: 0; transform: scale(0.72); }
+  18% { opacity: 1; transform: scale(1.08); }
+  72% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.92); }
+}
+
+@keyframes goalConfetti {
+  0% { opacity: 0; transform: rotate(calc(var(--i) * 20deg)) translateY(0) scale(0.8); }
+  15% { opacity: 1; }
+  100% { opacity: 0; transform: rotate(calc(var(--i) * 20deg)) translateY(-240px) scale(1.05); }
+}
+
+@media (max-width: 640px) {
+  .guestGuideBox {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .guestPerformanceBox {
+    grid-template-columns: 1fr;
+  }
+
+  .guestPointer {
+    right: 18px;
+    top: 8px;
+  }
+}
+

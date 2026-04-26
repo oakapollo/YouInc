@@ -122,7 +122,7 @@ function periodWord(tf: Timeframe) {
 }
 
 function formatMoney(value: number) {
-  return `U$${value.toFixed(3)}`;
+  return `$${value.toFixed(2)}`;
 }
 
 export default function GuestPage() {
@@ -329,6 +329,7 @@ export default function GuestPage() {
   }
 
   const prompt = bottomPrompt();
+  const coach = tutorialCoach(step, visibleZone);
 
   return (
     <div className={styles.page}>
@@ -454,7 +455,7 @@ export default function GuestPage() {
         <MiniCandleChart candles={candles} selected={selected} latest={latestCandle} shouldPulse={step === "tap-candle" || step === "goal-chart"} onSelect={selectCandle} />
 
         {step === "tap-candle" && visibleZone === "chart" ? (
-          <GuideBox title="Tap the latest point" text="Every point can show what changed during that period." button="I’ll tap it" onClick={() => undefined} />
+          <GuideBox title="Tap the highlighted point" text="Pick the latest point on the chart to see what changed." button="Tap the point" onClick={() => undefined} />
         ) : null}
 
         {showGoalMessage && visibleZone === "chart" ? (
@@ -479,7 +480,7 @@ export default function GuestPage() {
               <div>
                 <span>{selected ? (isSelectedUp ? "Up" : "Down") : "Change"}</span>
                 <strong className={selected ? (isSelectedUp ? styles.txPositive : styles.txNegative) : ""}>
-                  {selected && previous ? `${isSelectedUp ? "+" : ""}${formatMoney(Math.abs(selectedMove)).replace("U$", "$")}` : "—"}
+                  {selected && previous ? `${isSelectedUp ? "+" : ""}${formatMoney(Math.abs(selectedMove))}` : "—"}
                 </strong>
               </div>
               <div>
@@ -543,7 +544,7 @@ export default function GuestPage() {
               </div>
               <div className={styles.modalBody}>
                 <div className={styles.form}>
-                  <label className={styles.label}>{modalKind === "goals" ? "Goal" : modalKind === "bad" ? "Bad habit" : "Habit"}<input className={styles.input} value={entryTitle} onChange={(e) => setEntryTitle(e.target.value)} autoFocus /></label>
+                  <label className={styles.label}>{modalKind === "goals" ? "Goal" : modalKind === "bad" ? "Bad habit" : "Habit"}<input className={styles.input} value={entryTitle} onChange={(e) => setEntryTitle(e.target.value)} /></label>
                   <div className={styles.row2}>
                     <label className={styles.label}>Type<input className={styles.input} value={SECTION_TITLES[modalKind]} readOnly /></label>
                     <label className={styles.label}>Notes<input className={styles.input} value={modalKind === "bad" ? "honesty beats hiding" : modalKind === "goals" ? "make progress visible" : "tracking habits is also a habit"} readOnly /></label>
@@ -558,10 +559,44 @@ export default function GuestPage() {
           </div>
         ) : null}
 
+        {coach ? <TutorialCoach title={coach.title} text={coach.text} /> : null}
         {prompt ? <div className={styles.guestBottomBar}>{prompt}</div> : null}
         {logFlash ? <div className={styles.logFlash}><span className={styles.logFlashDot}>✓</span>{logFlash}</div> : null}
         {celebrate ? <GoalCelebration /> : null}
       </div>
+    </div>
+  );
+}
+
+function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "details") {
+  if (step === "modal-add" || step === "bad-modal-add" || step === "goal-modal-add" || step === "final") return null;
+  if (step === "good-tab") return { title: "Your first signal starts here", text: "Tap Good Habits. Start with one small action you want to repeat." };
+  if (step === "add-entry") return { title: "Name the habit", text: "Tap Add entry. I already filled it in so you can feel the flow, not fight the form." };
+  if (step === "hold") return { title: "Log the win", text: "Scroll to the habit and tap Hold. That tells your chart you showed up today." };
+  if (step === "chart-day" && visibleZone !== "chart") return { title: "Now watch it move", text: "Scroll to the chart. Your action has already changed the price." };
+  if (step === "tf-info" && visibleZone !== "chart") return { title: "Try the time views", text: "Scroll to the chart controls. 1D, 3D, 1W and 1M show different progress windows." };
+  if (step === "buy-open") return { title: "Tiny action, real movement", text: "Tap BUY +25 UC. This is for a quick action you can do right now." };
+  if (step === "buy-complete") return { title: "Do it, then log it", text: "The task is already filled in. Complete it and watch the chart respond." };
+  if (step === "tap-candle") return { title: "Pick the latest point", text: "Tap the highlighted point on the chart. The lines show exactly what you selected." };
+  if (step === "details" && visibleZone !== "details") return { title: "Read the result", text: "Scroll to the breakdown. You’ll see the price and the change from the previous period." };
+  if (step === "bad-tab") return { title: "Now add honesty", text: "Tap Bad Habits. Progress is not only wins — it is also telling the truth." };
+  if (step === "bad-add-entry") return { title: "Track the pattern", text: "Tap Add entry. I filled in a simple bad habit so you can log the slip honestly." };
+  if (step === "bad-reach") return { title: "Open Bad Habits", text: "Tap the Bad Habits tab again to continue." };
+  if (step === "bad-sold") return { title: "Log the slip", text: "Tap Sold -50 UC. No drama. Just honest feedback." };
+  if (step === "goals-tab") return { title: "Now finish with a real boost", text: "Tap Goals. Goals are the big moves that push your chart higher." };
+  if (step === "goal-add-entry") return { title: "Create the goal", text: "Tap Add entry. I filled in your first goal so you can see the dopamine hit." };
+  if (step === "goal-reach") return { title: "Open Goals", text: "Tap the Goals tab again to continue." };
+  if (step === "goal-hold") return { title: "Complete the goal", text: "Tap Complete +400 UC. This one should feel bigger because goals are supposed to matter." };
+  if (step === "goal-chart" && visibleZone !== "chart") return { title: "Look at the jump", text: "Scroll to the chart and see what a completed goal does to your price." };
+  return null;
+}
+
+function TutorialCoach({ title, text }: { title: string; text: string }) {
+  return (
+    <div className={styles.guestCoachCard} role="status" aria-live="polite">
+      <div className={styles.guestCoachKicker}>First run</div>
+      <div className={styles.guestCoachTitle}>{title}</div>
+      <div className={styles.guestCoachText}>{text}</div>
     </div>
   );
 }
