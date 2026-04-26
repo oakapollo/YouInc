@@ -619,7 +619,7 @@ function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "deta
   if (step === "bad-reach") return { title: "Open Bad Habits", text: "Tap the Bad Habits tab again to continue." };
   if (step === "bad-sold") return { title: "Log the slip", text: "Tap Sold -50 UC. No drama. Just honest feedback." };
   if (step === "goals-tab") return { title: "Now finish with a real boost", text: "Tap Goals. Goals are the big moves that push your chart higher." };
-  if (step === "goal-add-entry") return { title: "Create the goal", text: "Tap Add entry. I filled in your first goal so you can see the dopamine hit." };
+  if (step === "goal-add-entry") return { title: "Create the goal", text: "Tap Add entry. I filled in your first goal for you." };
   if (step === "goal-hold") return { title: "Complete the goal", text: "Tap Complete +400 UC. This one should feel bigger because goals are supposed to matter." };
   if (step === "goal-chart" && visibleZone !== "chart") return { title: "Look at the jump", text: "Scroll to the chart, then tap the highlighted point 👇." };
   if (step === "goal-details" && visibleZone !== "details") return { title: "Progress Breakdown", text: "Here you will see what you logged and how the selected period changed." };
@@ -726,11 +726,22 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, pointerText, 
   const activeX = activeIndex >= 0 ? padding.left + activeIndex * xStep + xStep / 2 : null;
   const activeY = active ? y(active.c) : null;
   const latestIndex = latest ? candles.findIndex((c) => c.t === latest.t) : -1;
-  const pointerLeft = latestIndex >= 0 ? `${((padding.left + latestIndex * xStep + xStep / 2) / w) * 100}%` : "78%";
+  const pointerX = latestIndex >= 0 ? padding.left + latestIndex * xStep + xStep / 2 : w * 0.78;
+  const pointerY = latest ? y(latest.h) : h * 0.35;
+  const pointerLeft = `${(pointerX / w) * 100}%`;
+  const pointerTop = `${(Math.max(22, pointerY - 18) / h) * 100}%`;
 
   return (
     <div className={styles.chartWrap}>
-      {shouldPulse ? <div className={styles.guestPointer} style={{ left: pointerLeft, right: "auto", transform: "translateX(-50%)" }}>{pointerText}</div> : null}
+      {shouldPulse ? (
+        <div
+          className={styles.guestPointer}
+          style={{ left: pointerLeft, top: pointerTop, right: "auto" }}
+          aria-hidden="true"
+        >
+          {pointerText}
+        </div>
+      ) : null}
       <svg className={styles.chartSvg} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Guest progress chart" onMouseLeave={() => setHovered(null)}>
         <line x1={padding.left} x2={w - padding.right} y1={h - padding.bottom} y2={h - padding.bottom} stroke="rgba(255,255,255,0.12)" />
 
