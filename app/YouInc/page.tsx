@@ -378,6 +378,8 @@ export default function YouIncPage() {
   const sectionSnapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const [buyActivity, setBuyActivity] = useState("");
+  const [logFlash, setLogFlash] = useState<{ id: string; text: string } | null>(null);
+  const logFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [store, setStore] = useState<Store>({
     marketCapUC: 10000, // 10000 UC = 1.000 U$
@@ -441,6 +443,11 @@ export default function YouIncPage() {
     if (writeTimerRef.current) {
       clearTimeout(writeTimerRef.current);
       writeTimerRef.current = null;
+    }
+
+    if (logFlashTimerRef.current) {
+      clearTimeout(logFlashTimerRef.current);
+      logFlashTimerRef.current = null;
     }
   }, [uidSafe]);
 
@@ -540,6 +547,18 @@ export default function YouIncPage() {
 
   // ------- taxed market cap updates + transactions -------
 function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
+  const preview = applyTaxes(kind, deltaUC, store.marketCapUC).effectiveDeltaUC;
+  const sign = preview > 0 ? "+" : "";
+  const readableLabel = label.replace(/\s\([^)]*\)$/g, "").replace(/^BUY:\s*/i, "");
+
+  setLogFlash({
+    id: uid(),
+    text: `${readableLabel} logged · ${sign}${preview} UC`,
+  });
+
+  if (logFlashTimerRef.current) clearTimeout(logFlashTimerRef.current);
+  logFlashTimerRef.current = setTimeout(() => setLogFlash(null), 1800);
+
   setStore((s) => {
     const { effectiveDeltaUC, taxed } = applyTaxes(kind, deltaUC, s.marketCapUC);
 
@@ -555,6 +574,7 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
     return { ...s, marketCapUC: nextCap, tx: [tx, ...s.tx].slice(0, 2000) };
   });
 }
+
 
 
   const runDecayCatchUp = useCallback(async () => {
@@ -949,6 +969,13 @@ function submitBuyActivity() {
       <div className={styles.glowC} />
 
       <div className={styles.shell}>
+        {logFlash ? (
+          <div key={logFlash.id} className={styles.logFlash} role="status" aria-live="polite">
+            <span className={styles.logFlashDot}>✓</span>
+            <span>{logFlash.text}</span>
+          </div>
+        ) : null}
+
         <header className={styles.header}>
           <div className={styles.brand}>
             <div className={styles.logo} />
@@ -1652,20 +1679,6 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     [data, selectedCandleKey]
   );
 
-  const selectedCandleIndex = useMemo(
-    () => (selectedCandleKey ? data.findIndex((c) => c.t === selectedCandleKey) : -1),
-    [data, selectedCandleKey]
-  );
-
-  const previousCandle = selectedCandleIndex > 0 ? data[selectedCandleIndex - 1] : null;
-  const selectedMovePct = selectedCandle
-    ? previousCandle && previousCandle.c !== 0
-      ? ((selectedCandle.c - previousCandle.c) / previousCandle.c) * 100
-      : 0
-    : 0;
-  const selectedMoveLabel = `${selectedMovePct >= 0 ? "+" : ""}${selectedMovePct.toFixed(2)}%`;
-  const selectedMoveClass = selectedMovePct > 0 ? styles.txPositive : selectedMovePct < 0 ? styles.txNegative : styles.txNeutral;
-
   // Candle selection filtering: use the timeframe bucket to collect tx for the selected candle.
   const selectedTx = useMemo(() => {
     if (!selectedCandleKey) return [];
@@ -1898,18 +1911,6 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     }
   }, [data, selectedCandleKey]);
 
-  const activeCandle = selectedCandle ?? renderTooltip ?? null;
-  const activeVisibleIndex = activeCandle ? visibleData.findIndex((entry) => entry.t === activeCandle.t) : -1;
-  const activeCrosshair =
-    activeCandle && activeVisibleIndex >= 0
-      ? {
-          x: pxX(activeVisibleIndex),
-          y: yToPx(activeCandle.c),
-          candle: activeCandle,
-          isSelected: selectedCandleKey === activeCandle.t,
-        }
-      : null;
-
   const formatTxLabel = (label: string, deltaUC: number) => {
     const match = label.match(/^(.*)\s\(([^)]+)\)$/);
     if (match) return { title: match[1], action: match[2] };
@@ -2007,44 +2008,11 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
               return (
                 <g key={d.t} opacity={selectedCandleKey === d.t ? 1 : 0.92}>
-                  {selectedCandleKey === d.t ? (
-                    <>
-                      <rect
-                        x={x - bodyW / 2 - 6}
-                        y={padding.top}
-                        width={bodyW + 12}
-                        height={h - padding.top - padding.bottom}
-                        rx={8}
-                        fill="rgba(45,212,191,0.08)"
-                        stroke="rgba(45,212,191,0.38)"
-                        strokeWidth={1.5}
-                      />
-                      <circle cx={x} cy={yC} r={7} fill="rgba(45,212,191,0.14)" stroke="rgba(45,212,191,0.85)" strokeWidth={2} />
-                    </>
-                  ) : null}
-                  <line x1={x} x2={x} y1={yH} y2={yL} stroke={stroke} strokeWidth={selectedCandleKey === d.t ? 3 : 2} opacity={0.9} />
-                  <rect
-                    x={x - bodyW / 2}
-                    y={top}
-                    width={bodyW}
-                    height={bodyH}
-                    rx={3}
-                    fill={fill}
-                    stroke={selectedCandleKey === d.t ? "rgba(255,255,255,0.95)" : stroke}
-                    strokeWidth={selectedCandleKey === d.t ? 2.4 : 1}
-                  />
+                  <line x1={x} x2={x} y1={yH} y2={yL} stroke={stroke} strokeWidth={2} opacity={0.85} />
+                  <rect x={x - bodyW / 2} y={top} width={bodyW} height={bodyH} rx={3} fill={fill} stroke={stroke} strokeWidth={1} />
                 </g>
               );
             })}
-
-            {/* cursor / selected crosshair */}
-            {activeCrosshair ? (
-              <g className={styles.chartCrosshair} pointerEvents="none">
-                <line x1={activeCrosshair.x} x2={activeCrosshair.x} y1={padding.top} y2={h - padding.bottom} />
-                <line x1={padding.left} x2={w - padding.right} y1={activeCrosshair.y} y2={activeCrosshair.y} />
-                <circle cx={activeCrosshair.x} cy={activeCrosshair.y} r={4.5} />
-              </g>
-            ) : null}
 
             {/* sparse bottom labels */}
             {visibleData.map((d, i) => {
@@ -2064,8 +2032,10 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
     {renderTooltip ? (
       <div className={styles.chartTooltip} style={{ left: tooltip?.x ?? 24, top: tooltip?.y ?? 24 }}>
-        <div className={styles.tooltipTitle}>{selectedCandleKey === renderTooltip.t ? "Selected candle" : "Candle"}</div>
-        <div className={styles.tooltipValue}>Close: U${renderTooltip.c.toFixed(3)}</div>
+        <div className={styles.tooltipTitle}>O/H/L/C</div>
+        <div className={styles.tooltipValue}>
+          {renderTooltip.o.toFixed(3)} · {renderTooltip.h.toFixed(3)} · {renderTooltip.l.toFixed(3)} · {renderTooltip.c.toFixed(3)}
+        </div>
         <div className={styles.tooltipMeta}>{tooltipEvents} events</div>
       </div>
     ) : null}
@@ -2091,18 +2061,26 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
         </div>
         {selectedCandle ? (
           <div className={styles.detailsBody}>
-            <div className={styles.detailsStatsCompact}>
+            <div className={styles.detailsStats}>
               <div>
-                <span>Today started at</span>
+                <span>Open</span>
                 <strong>U${selectedCandle.o.toFixed(3)}</strong>
+              </div>
+              <div>
+                <span>High</span>
+                <strong>U${selectedCandle.h.toFixed(3)}</strong>
+              </div>
+              <div>
+                <span>Low</span>
+                <strong>U${selectedCandle.l.toFixed(3)}</strong>
               </div>
               <div>
                 <span>Close</span>
                 <strong>U${selectedCandle.c.toFixed(3)}</strong>
               </div>
               <div>
-                <span>Vs previous candle</span>
-                <strong className={selectedMoveClass}>{selectedMoveLabel}</strong>
+                <span>MarketCap</span>
+                <strong>{Math.round(selectedCandle.c * 10000).toLocaleString()} UC</strong>
               </div>
             </div>
 
