@@ -380,6 +380,7 @@ export default function YouIncPage() {
   const [buyActivity, setBuyActivity] = useState("");
   const [logFlash, setLogFlash] = useState<{ id: string; text: string } | null>(null);
   const logFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [introDone, setIntroDone] = useState(false);
 
   const [store, setStore] = useState<Store>({
     marketCapUC: 10000, // 10000 UC = 1.000 U$
@@ -426,6 +427,14 @@ export default function YouIncPage() {
   useEffect(() => {
     const interval = setInterval(() => setNowTick(Date.now()), 60 * 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setIntroDone(true);
+    }, 2200);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
 
@@ -967,6 +976,15 @@ function submitBuyActivity() {
 
   return (
     <div className={styles.page}>
+      {!introDone ? (
+        <div className={styles.introOverlay} aria-hidden="true">
+          <div className={styles.introLogo}>
+            <span className={styles.introLeft}>&lt;&lt;&lt;</span>
+            <span className={styles.introName}>You Inc</span>
+            <span className={styles.introRight}>&gt;&gt;&gt;</span>
+          </div>
+        </div>
+      ) : null}
       <div className={styles.glowA} />
       <div className={styles.glowB} />
       <div className={styles.glowC} />
