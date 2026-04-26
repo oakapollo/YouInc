@@ -1371,6 +1371,23 @@ select.input {
   box-shadow: none;
 }
 
+.addEntryRow {
+  display: flex;
+  justify-content: flex-end;
+  margin: 10px 0 6px;
+}
+
+@media (max-width: 640px) {
+  .addEntryRow {
+    justify-content: stretch;
+  }
+
+  .addEntryRow .addBtn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
 .tabActive,
 .tfBtnOn,
 .dowPillOn {

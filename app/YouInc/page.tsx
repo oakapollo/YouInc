@@ -990,10 +990,6 @@ function submitBuyActivity() {
             <a className={styles.secondaryBtn} href="/logout">
               Switch account
             </a>
-            <button className={styles.addBtn} onClick={openModal} type="button">
-              <span className={styles.addPlus}>＋</span>
-              Add entry
-            </button>
           </div>
         </header>
 
@@ -1027,6 +1023,16 @@ function submitBuyActivity() {
             })}
           </div>
         </section>
+
+        <div className={styles.addEntryRow}>
+  <button
+    onClick={() => openModal}
+    className={styles.addBtn}
+  >
+    <span className={styles.addPlus}>+</span>
+    Add Entry
+  </button>
+</div>
 
         <div className={styles.tabs} role="tablist" aria-label="You Inc sections">
           {SECTION_ORDER.map((key) => (
