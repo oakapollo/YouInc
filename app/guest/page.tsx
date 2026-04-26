@@ -747,20 +747,10 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, pointerText, 
   const latestIndex = latest ? candles.findIndex((c) => c.t === latest.t) : -1;
   const pointerX = latestIndex >= 0 ? padding.left + latestIndex * xStep + xStep / 2 : w * 0.78;
   const pointerY = latest ? y(latest.h) : h * 0.35;
-  const pointerLeft = `${(pointerX / w) * 100}%`;
-  const pointerTop = `${(Math.max(22, pointerY - 18) / h) * 100}%`;
+  const pointerGroupY = Math.max(padding.top + 42, pointerY - 54);
 
   return (
     <div className={styles.chartWrap}>
-      {shouldPulse ? (
-        <div
-          className={styles.guestPointer}
-          style={{ left: pointerLeft, top: pointerTop, right: "auto" }}
-          aria-hidden="true"
-        >
-          {pointerText}
-        </div>
-      ) : null}
       <svg className={styles.chartSvg} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Guest progress chart" onMouseLeave={() => setHovered(null)}>
         <line x1={padding.left} x2={w - padding.right} y1={h - padding.bottom} y2={h - padding.bottom} stroke="rgba(255,255,255,0.12)" />
 
@@ -797,6 +787,15 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, pointerText, 
             </g>
           );
         })}
+
+        {shouldPulse ? (
+          <g transform={`translate(${pointerX}, ${pointerGroupY})`} aria-hidden="true">
+            <g className={styles.guestSvgPointer}>
+              <text className={styles.guestSvgPointerLabel} x="0" y="0" textAnchor="middle">Tap</text>
+              <text className={styles.guestSvgPointerEmoji} x="0" y="36" textAnchor="middle">{pointerText}</text>
+            </g>
+          </g>
+        ) : null}
       </svg>
     </div>
   );
