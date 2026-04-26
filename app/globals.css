@@ -19,6 +19,7 @@
 
 html,
 body {
+  overscroll-behavior-y: auto;
   height: 100%;
   margin: 0;
 }

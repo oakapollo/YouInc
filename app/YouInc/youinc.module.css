@@ -750,7 +750,6 @@
 /* --- Scroll + tap feedback patch --- */
 html,
 body {
-  overscroll-behavior-y: auto;
   touch-action: pan-y;
 }
 
