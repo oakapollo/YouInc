@@ -33,6 +33,7 @@ type Step =
   | "goal-reach"
   | "goal-hold"
   | "goal-chart"
+  | "goal-details"
   | "final";
 
 const SECTION_ORDER: TabKey[] = ["goals", "good", "bad", "addictions"];
@@ -136,6 +137,7 @@ export default function GuestPage() {
   const [marketCapUC, setMarketCapUC] = useState(10000);
   const [tx, setTx] = useState<Tx[]>([]);
   const [tf, setTf] = useState<Timeframe>("1d");
+  const [tfTouched, setTfTouched] = useState(false);
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const [buyActivity, setBuyActivity] = useState("Do 5 push ups. Seriously, do it.");
   const [selected, setSelected] = useState<Candle | null>(null);
@@ -158,6 +160,7 @@ export default function GuestPage() {
   const selectedMove = selected && previous ? selected.c - previous.c : 0;
   const selectedPct = selected && previous && previous.c !== 0 ? (selectedMove / previous.c) * 100 : 0;
   const isSelectedUp = selectedMove >= 0;
+  const selectedPeriodLabel = periodWord(tf);
 
   useEffect(() => {
     const targets = [
@@ -239,7 +242,10 @@ export default function GuestPage() {
     setIsModalOpen(false);
 
     if (modalKind === "good") setStep("hold");
-    if (modalKind === "bad") setStep("bad-reach");
+    if (modalKind === "bad") {
+      setShowBadPopup(true);
+      setStep("bad-popup");
+    }
     if (modalKind === "goals") setStep("goal-reach");
   }
 
@@ -259,6 +265,7 @@ export default function GuestPage() {
   function holdGood(item: DemoItem) {
     applyDelta(`${item.title} · Good habit`, 100);
     setTf("1d");
+    setTfTouched(false);
     setStep("chart-day");
   }
 
@@ -270,6 +277,7 @@ export default function GuestPage() {
   function holdGoal(item: DemoItem) {
     applyDelta(`${item.title} · Goal complete`, 400);
     setTf("1d");
+    setTfTouched(false);
     setCelebrate(true);
     setTimeout(() => setCelebrate(false), 2200);
     setStep("goal-chart");
@@ -291,9 +299,17 @@ export default function GuestPage() {
   function selectCandle(candle: Candle) {
     setSelected(candle);
     if (step === "tap-candle") setStep("details");
+    if (step === "goal-chart") {
+      setStep("goal-details");
+      window.setTimeout(() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
+    }
   }
 
   function continueAfterBreakdown() {
+    if (step === "goal-details") {
+      setStep("final");
+      return;
+    }
     setStep("bad-tab");
   }
 
@@ -317,14 +333,15 @@ export default function GuestPage() {
     if (step === "tf-info" && visibleZone !== "chart") return "Scroll to the chart controls and try the time views.";
     if (step === "buy-open" && visibleZone !== "chart") return "Scroll to the chart controls, then tap BUY +25 UC.";
     if (step === "tap-candle" && visibleZone !== "chart") return "Scroll to the chart and tap the highlighted point.";
-    if (step === "details" && visibleZone !== "details") return "Scroll to the breakdown below the chart.";
+    if (step === "details" && visibleZone !== "details") return "Scroll to the Progress Breakdown below the chart.";
+    if (step === "goal-details" && visibleZone !== "details") return "Taking you to Progress Breakdown.";
     if (step === "bad-tab" || step === "bad-add-entry") return "Go back to the tabs and open Bad Habits.";
     if (step === "bad-reach") return "Scroll to the tabs, then switch to Bad Habits.";
     if (step === "bad-sold" && visibleZone !== "list") return "Scroll to your Bad Habits list, then tap Sold.";
     if (step === "goals-tab" || step === "goal-add-entry") return "Go back to the tabs and open Goals.";
     if (step === "goal-reach") return "Scroll to the tabs, then switch to Goals.";
     if (step === "goal-hold" && visibleZone !== "list") return "Scroll to your Goals list, then complete your first goal.";
-    if (step === "goal-chart" && visibleZone !== "chart") return "Scroll to the chart to see the boost.";
+    if (step === "goal-chart" && visibleZone !== "chart") return "Scroll to the chart, then tap the highlighted point.";
     return null;
   }
 
@@ -349,10 +366,6 @@ export default function GuestPage() {
           </div>
           <div className={styles.headerActions}>
             <a className={styles.secondaryBtn} href="/login">Login</a>
-            <button className={`${styles.addBtn} ${activeAddHighlight()}`} onClick={() => openEntry(tab)} type="button">
-              <span className={styles.addPlus}>＋</span>
-              Add entry
-            </button>
           </div>
         </header>
 
@@ -368,6 +381,13 @@ export default function GuestPage() {
             <div className={`${styles.heroStat} ${styles.heroStat_warning}`}><span>Mode</span><strong>First run</strong></div>
           </div>
         </section>
+
+        <div className={styles.guestAddEntryRow}>
+          <button className={`${styles.addBtn} ${activeAddHighlight()}`} onClick={() => openEntry(tab)} type="button">
+            <span className={styles.addPlus}>＋</span>
+            Add entry
+          </button>
+        </div>
 
         <div ref={tabsRef} className={styles.tabs} role="tablist" aria-label="Guest onboarding sections">
           {SECTION_ORDER.map((key) => {
@@ -425,20 +445,30 @@ export default function GuestPage() {
             <div className={styles.chartIntroTitle}>Your chart</div>
             <div className={styles.chartIntroText}>Your choices turn into price movement. Green is progress. Red is feedback.</div>
           </div>
-          <div className={`${styles.tfRow} ${(step === "tf-info" || step === "buy-open") ? styles.guestPulse : ""}`}>
+          <div className={styles.tfRow}>
             <button className={`${styles.actionPrimary} ${isHighlight("buy-open")}`} onClick={openBuy} type="button">BUY <span className={styles.delta}>+25 UC</span></button>
             {(["1d", "3d", "1w", "1m"] as Timeframe[]).map((key) => (
-              <button key={key} className={`${styles.tfBtn} ${tf === key ? styles.tfBtnOn : ""}`} onClick={() => setTf(key)} type="button">{key.toUpperCase()}</button>
+              <button
+                key={key}
+                className={`${styles.tfBtn} ${tf === key ? styles.tfBtnOn : ""} ${step === "tf-info" && !tfTouched ? styles.guestPulse : ""}`}
+                onClick={() => {
+                  setTf(key);
+                  if (step === "tf-info") setTfTouched(true);
+                }}
+                type="button"
+              >
+                {key.toUpperCase()}
+              </button>
             ))}
           </div>
         </section>
 
         {step === "chart-day" && visibleZone === "chart" ? (
-          <GuideBox title="One point = one day" text="This view shows daily movement, so you can see how today changed your price." button="OK" onClick={() => setStep("tf-info")} />
+          <GuideBox title="One point = one day" text="This view shows daily movement, so you can see how today changed your price." button="OK" pulseButton onClick={() => setStep("tf-info")} />
         ) : null}
 
         {step === "tf-info" && visibleZone === "chart" ? (
-          <GuideBox title="Change the view" text="Use 1D, 3D, 1W, or 1M to see your progress over different periods." button="OK" onClick={() => setStep("buy-open")} />
+          <GuideBox title="Change the view" text="Tap 1D, 3D, 1W, or 1M to see your progress over different periods." button="OK" pulseButton={tfTouched} onClick={() => { if (tfTouched) setStep("buy-open"); }} />
         ) : null}
 
         {isBuyOpen ? (
@@ -452,14 +482,14 @@ export default function GuestPage() {
           </div>
         ) : null}
 
-        <MiniCandleChart candles={candles} selected={selected} latest={latestCandle} shouldPulse={step === "tap-candle" || step === "goal-chart"} onSelect={selectCandle} />
+        <MiniCandleChart candles={candles} selected={selected} latest={latestCandle} shouldPulse={step === "tap-candle" || step === "goal-chart"} pointerText={step === "goal-chart" ? "Tap the point." : "Tap the point first."} onSelect={selectCandle} />
 
         {step === "tap-candle" && visibleZone === "chart" ? (
-          <GuideBox title="Tap the highlighted point" text="Pick the latest point on the chart to see what changed." button="Tap the point" onClick={() => undefined} />
+          <GuideBox title="Tap the point first" text="Tap the highlighted point on the chart before reading the breakdown." button="Tap the point" onClick={() => undefined} />
         ) : null}
 
-        {showGoalMessage && visibleZone === "chart" ? (
-          <GuideBox title="That goal just moved you up." text="Completing goals gives your chart a bigger boost and makes progress visible." button="Got it" onClick={() => { setShowGoalMessage(false); setStep("final"); }} />
+        {showGoalMessage && step === "goal-chart" && visibleZone === "chart" ? (
+          <GuideBox title="Completing goals boosts your chart." text="That jump is your progress becoming visible. Tap the highlighted point to see what changed." button="Tap the point" onClick={() => undefined} />
         ) : null}
 
         <section ref={detailsRef} className={`${styles.detailsPanel} ${styles.detailsPanelOpen}`}>
@@ -468,10 +498,16 @@ export default function GuestPage() {
               <div className={styles.detailsTitle}>Progress breakdown</div>
               <div className={styles.detailsRange}>{selected ? new Date(selected.t).toLocaleString() : "Tap the chart to inspect a point."}</div>
             </div>
-            {step === "details" ? <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={continueAfterBreakdown} type="button">Got it</button> : null}
+            {(step === "details" || step === "goal-details") ? <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={continueAfterBreakdown} type="button">Got it</button> : null}
           </div>
 
           <div className={styles.detailsBody}>
+            {step === "details" ? (
+              <div className={styles.guestInlineTip}>View your logs for the chosen {selectedPeriodLabel} and the percentage change from the previous {selectedPeriodLabel}. Then tap Got it.</div>
+            ) : null}
+            {step === "goal-details" ? (
+              <div className={styles.guestInlineTip}>This is your Progress Breakdown. It shows what you logged, how your price changed, and why consistency matters. The key is not being perfect — it is being honest enough to keep the signal real.</div>
+            ) : null}
             <div className={styles.guestPerformanceBox}>
               <div>
                 <span>Price</span>
@@ -525,7 +561,7 @@ export default function GuestPage() {
               <div className={styles.modalHeader}><div className={styles.modalTitle}>Ready to keep the chart going?</div></div>
               <div className={styles.modalBody}>
                 <div className={styles.helperText} style={{ fontSize: 15, lineHeight: 1.7 }}>
-                  You just logged wins, slips, and a goal. Create your account and make tomorrow&apos;s chart belong to you.
+                  You have seen the loop: log honestly, watch the signal change, and build momentum one day at a time. Create your account and keep your chart alive.
                 </div>
               </div>
               <div className={styles.modalFooter}>
@@ -569,7 +605,7 @@ export default function GuestPage() {
 }
 
 function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "details") {
-  if (step === "modal-add" || step === "bad-modal-add" || step === "goal-modal-add" || step === "final") return null;
+  if (step === "modal-add" || step === "bad-modal-add" || step === "goal-modal-add" || step === "bad-popup" || step === "final") return null;
   if (step === "good-tab") return { title: "Your first signal starts here", text: "Tap Good Habits. Start with one small action you want to repeat." };
   if (step === "add-entry") return { title: "Name the habit", text: "Tap Add entry. I already filled it in so you can feel the flow, not fight the form." };
   if (step === "hold") return { title: "Log the win", text: "Scroll to the habit and tap Hold. That tells your chart you showed up today." };
@@ -587,7 +623,8 @@ function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "deta
   if (step === "goal-add-entry") return { title: "Create the goal", text: "Tap Add entry. I filled in your first goal so you can see the dopamine hit." };
   if (step === "goal-reach") return { title: "Open Goals", text: "Tap the Goals tab again to continue." };
   if (step === "goal-hold") return { title: "Complete the goal", text: "Tap Complete +400 UC. This one should feel bigger because goals are supposed to matter." };
-  if (step === "goal-chart" && visibleZone !== "chart") return { title: "Look at the jump", text: "Scroll to the chart and see what a completed goal does to your price." };
+  if (step === "goal-chart" && visibleZone !== "chart") return { title: "Look at the jump", text: "Scroll to the chart, then tap the highlighted point." };
+  if (step === "goal-details" && visibleZone !== "details") return { title: "Progress Breakdown", text: "Here you will see what you logged and how the selected period changed." };
   return null;
 }
 
@@ -612,11 +649,11 @@ function EmptyState({ text }: { text: string }) {
   return <div className={styles.empty}><div className={styles.emptyIcon}>◇</div><div className={styles.emptyText}>{text}</div></div>;
 }
 
-function GuideBox({ title, text, button, onClick }: { title: string; text: string; button: string; onClick: () => void }) {
+function GuideBox({ title, text, button, onClick, pulseButton = true }: { title: string; text: string; button: string; onClick: () => void; pulseButton?: boolean }) {
   return (
     <div className={styles.guestGuideBox}>
       <div><div className={styles.helperTitle}>{title}</div><div className={styles.helperText}>{text}</div></div>
-      <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={onClick} type="button">{button}</button>
+      <button className={`${styles.primaryBtn} ${pulseButton ? styles.guestPulse : ""}`} onClick={onClick} type="button">{button}</button>
     </div>
   );
 }
@@ -651,7 +688,10 @@ function DemoCard({
         {tab === "goals" ? (
           <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoalHold} type="button">Complete <span className={styles.delta}>+400 UC</span></button>
         ) : tab === "bad" ? (
-          <button className={`${styles.actionDanger} ${soldHighlight ? styles.guestPulse : ""}`} onClick={onBadSold} type="button">Sold <span className={styles.delta}>-50 UC</span></button>
+          <>
+            <button className={styles.actionPrimary} type="button">Hold <span className={styles.delta}>+100 UC</span></button>
+            <button className={`${styles.actionDanger} ${soldHighlight ? styles.guestPulse : ""}`} onClick={onBadSold} type="button">Sold <span className={styles.delta}>-50 UC</span></button>
+          </>
         ) : (
           <>
             <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoodHold} type="button">Hold <span className={styles.delta}>+100 UC</span></button>
@@ -672,7 +712,7 @@ function GoalCelebration() {
   );
 }
 
-function MiniCandleChart({ candles, selected, latest, shouldPulse, onSelect }: { candles: Candle[]; selected: Candle | null; latest: Candle | null; shouldPulse: boolean; onSelect: (c: Candle) => void }) {
+function MiniCandleChart({ candles, selected, latest, shouldPulse, pointerText, onSelect }: { candles: Candle[]; selected: Candle | null; latest: Candle | null; shouldPulse: boolean; pointerText: string; onSelect: (c: Candle) => void }) {
   const [hovered, setHovered] = useState<Candle | null>(null);
   const w = 1000;
   const h = 320;
@@ -687,10 +727,12 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, onSelect }: {
   const activeIndex = active ? candles.findIndex((c) => c.t === active.t) : -1;
   const activeX = activeIndex >= 0 ? padding.left + activeIndex * xStep + xStep / 2 : null;
   const activeY = active ? y(active.c) : null;
+  const latestIndex = latest ? candles.findIndex((c) => c.t === latest.t) : -1;
+  const pointerLeft = latestIndex >= 0 ? `${((padding.left + latestIndex * xStep + xStep / 2) / w) * 100}%` : "78%";
 
   return (
     <div className={styles.chartWrap}>
-      {shouldPulse ? <div className={styles.guestPointer}>Tap the highlighted point ↓</div> : null}
+      {shouldPulse ? <div className={styles.guestPointer} style={{ left: pointerLeft, right: "auto", transform: "translateX(-50%)" }}>{pointerText} ↓</div> : null}
       <svg className={styles.chartSvg} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Guest progress chart" onMouseLeave={() => setHovered(null)}>
         <line x1={padding.left} x2={w - padding.right} y1={h - padding.bottom} y2={h - padding.bottom} stroke="rgba(255,255,255,0.12)" />
 
