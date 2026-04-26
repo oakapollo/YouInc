@@ -542,6 +542,20 @@ export default function YouIncPage() {
 
 
   // ------- persistence -------
+  function updateStoreAndSave(mutator: (current: Store) => Store) {
+    setStore((current) => {
+      const next = stripUndefined(mutator(current));
+
+      if (storeDocRef) {
+        void setDoc(storeDocRef, next, { merge: true }).catch((error) => {
+          console.error("Failed to save store update:", error);
+          setStoreError("That action was logged on screen, but it did not save. Check your connection and try again.");
+        });
+      }
+
+      return next;
+    });
+  }
 
 
 
@@ -550,6 +564,8 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
   const preview = applyTaxes(kind, deltaUC, store.marketCapUC).effectiveDeltaUC;
   const sign = preview > 0 ? "+" : "";
   const readableLabel = label.replace(/\s\([^)]*\)$/g, "").replace(/^BUY:\s*/i, "");
+  const txId = uid();
+  const txTs = Date.now();
 
   setLogFlash({
     id: uid(),
@@ -559,14 +575,14 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
   if (logFlashTimerRef.current) clearTimeout(logFlashTimerRef.current);
   logFlashTimerRef.current = setTimeout(() => setLogFlash(null), 1800);
 
-  setStore((s) => {
+  updateStoreAndSave((s) => {
     const { effectiveDeltaUC, taxed } = applyTaxes(kind, deltaUC, s.marketCapUC);
 
     const nextCap = Math.max(0, s.marketCapUC + effectiveDeltaUC);
 
     const tx: Tx = {
-      id: uid(),
-      ts: Date.now(),
+      id: txId,
+      ts: txTs,
       deltaUC: effectiveDeltaUC,
       label: taxed ? `${label} (taxed)` : label,
     };
@@ -858,27 +874,14 @@ function submitBuyActivity() {
     };
   }, [tab]);
 
-  // ✅ Firestore: debounced write
+  // Firestore writes now happen immediately inside updateStoreAndSave/applyDelta.
+  // This avoids the old debounce race where the UI could show a logged action,
+  // then a stale snapshot could overwrite it before the delayed write fired.
   useEffect(() => {
-    if (!storeDocRef) return;
-    if (!hydratedRef.current) return;
-    if (suppressWriteRef.current) return;
-
-    if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
-
-    writeTimerRef.current = setTimeout(async () => {
-      try {
-        const cleanStore = stripUndefined(store);
-        await setDoc(storeDocRef, cleanStore, { merge: true });
-      } catch (e) {
-        console.error("Failed to write store:", e);
-      }
-    }, 600);
-
     return () => {
       if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
     };
-  }, [store, storeDocRef]);
+  }, []);
 
   // ✅ NOW early returns are safe (ALL hooks above always ran)
   if (loading) {
@@ -905,7 +908,7 @@ function submitBuyActivity() {
 
     if (tab === "goals") {
       const item: Goal = { id: uid(), title: goalTitle.trim(), expiry: goalExpiry, createdAt: Date.now() };
-      setStore((s) => ({ ...s, goals: [item, ...s.goals] }));
+      updateStoreAndSave((s) => ({ ...s, goals: [item, ...s.goals] }));
       closeModal();
       resetFormForTab("goals");
       return;
@@ -920,7 +923,7 @@ function submitBuyActivity() {
         notes: goodNotes.trim(),
         createdAt: Date.now(),
       };
-      setStore((s) => ({ ...s, goodHabits: [item, ...s.goodHabits] }));
+      updateStoreAndSave((s) => ({ ...s, goodHabits: [item, ...s.goodHabits] }));
       closeModal();
       resetFormForTab("good");
       return;
@@ -934,23 +937,23 @@ function submitBuyActivity() {
         expiryDate: badExpiryMode === "date" ? badExpiryDate : undefined,
         createdAt: Date.now(),
       };
-      setStore((s) => ({ ...s, badHabits: [item, ...s.badHabits] }));
+      updateStoreAndSave((s) => ({ ...s, badHabits: [item, ...s.badHabits] }));
       closeModal();
       resetFormForTab("bad");
       return;
     }
 
     const item: Addiction = { id: uid(), title: addictionTitle.trim(), createdAt: Date.now() };
-    setStore((s) => ({ ...s, addictions: [item, ...s.addictions] }));
+    updateStoreAndSave((s) => ({ ...s, addictions: [item, ...s.addictions] }));
     closeModal();
     resetFormForTab("addictions");
   }
 
   function removeItem(kind: TabKey, id: string) {
-    if (kind === "goals") setStore((s) => ({ ...s, goals: s.goals.filter((x) => x.id !== id) }));
-    if (kind === "good") setStore((s) => ({ ...s, goodHabits: s.goodHabits.filter((x) => x.id !== id) }));
-    if (kind === "bad") setStore((s) => ({ ...s, badHabits: s.badHabits.filter((x) => x.id !== id) }));
-    if (kind === "addictions") setStore((s) => ({ ...s, addictions: s.addictions.filter((x) => x.id !== id) }));
+    if (kind === "goals") updateStoreAndSave((s) => ({ ...s, goals: s.goals.filter((x) => x.id !== id) }));
+    if (kind === "good") updateStoreAndSave((s) => ({ ...s, goodHabits: s.goodHabits.filter((x) => x.id !== id) }));
+    if (kind === "bad") updateStoreAndSave((s) => ({ ...s, badHabits: s.badHabits.filter((x) => x.id !== id) }));
+    if (kind === "addictions") updateStoreAndSave((s) => ({ ...s, addictions: s.addictions.filter((x) => x.id !== id) }));
   }
 
   function applyAddictionSold(addiction: Addiction) {
@@ -990,6 +993,10 @@ function submitBuyActivity() {
             <a className={styles.secondaryBtn} href="/logout">
               Switch account
             </a>
+            <button className={styles.addBtn} onClick={openModal} type="button">
+              <span className={styles.addPlus}>＋</span>
+              Add entry
+            </button>
           </div>
         </header>
 
@@ -1023,16 +1030,6 @@ function submitBuyActivity() {
             })}
           </div>
         </section>
-
-        <div className={styles.addEntryRow}>
-  <button
-    onClick={() => openModal}
-    className={styles.addBtn}
-  >
-    <span className={styles.addPlus}>+</span>
-    Add Entry
-  </button>
-</div>
 
         <div className={styles.tabs} role="tablist" aria-label="You Inc sections">
           {SECTION_ORDER.map((key) => (
