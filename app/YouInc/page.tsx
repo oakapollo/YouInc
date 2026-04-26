@@ -378,6 +378,8 @@ export default function YouIncPage() {
   const sectionSnapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const [buyActivity, setBuyActivity] = useState("");
+  const [logFlash, setLogFlash] = useState<{ id: string; text: string } | null>(null);
+  const logFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [store, setStore] = useState<Store>({
     marketCapUC: 10000, // 10000 UC = 1.000 U$
@@ -441,6 +443,11 @@ export default function YouIncPage() {
     if (writeTimerRef.current) {
       clearTimeout(writeTimerRef.current);
       writeTimerRef.current = null;
+    }
+
+    if (logFlashTimerRef.current) {
+      clearTimeout(logFlashTimerRef.current);
+      logFlashTimerRef.current = null;
     }
   }, [uidSafe]);
 
@@ -540,6 +547,18 @@ export default function YouIncPage() {
 
   // ------- taxed market cap updates + transactions -------
 function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
+  const preview = applyTaxes(kind, deltaUC, store.marketCapUC).effectiveDeltaUC;
+  const sign = preview > 0 ? "+" : "";
+  const readableLabel = label.replace(/\s\([^)]*\)$/g, "").replace(/^BUY:\s*/i, "");
+
+  setLogFlash({
+    id: uid(),
+    text: `${readableLabel} logged · ${sign}${preview} UC`,
+  });
+
+  if (logFlashTimerRef.current) clearTimeout(logFlashTimerRef.current);
+  logFlashTimerRef.current = setTimeout(() => setLogFlash(null), 1800);
+
   setStore((s) => {
     const { effectiveDeltaUC, taxed } = applyTaxes(kind, deltaUC, s.marketCapUC);
 
@@ -555,6 +574,7 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
     return { ...s, marketCapUC: nextCap, tx: [tx, ...s.tx].slice(0, 2000) };
   });
 }
+
 
 
   const runDecayCatchUp = useCallback(async () => {
@@ -949,6 +969,13 @@ function submitBuyActivity() {
       <div className={styles.glowC} />
 
       <div className={styles.shell}>
+        {logFlash ? (
+          <div key={logFlash.id} className={styles.logFlash} role="status" aria-live="polite">
+            <span className={styles.logFlashDot}>✓</span>
+            <span>{logFlash.text}</span>
+          </div>
+        ) : null}
+
         <header className={styles.header}>
           <div className={styles.brand}>
             <div className={styles.logo} />
