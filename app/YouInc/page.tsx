@@ -990,14 +990,10 @@ function submitBuyActivity() {
           </div>
 
           <div className={styles.headerActions}>
-            <a className={styles.secondaryBtn} href="/logout">
-              Switch account
-            </a>
-            <button className={styles.addBtn} onClick={openModal} type="button">
-              <span className={styles.addPlus}>＋</span>
-              Add entry
-            </button>
-          </div>
+  <a className={styles.secondaryBtn} href="/logout">
+    Switch account
+  </a>
+</div>
         </header>
 
         {storeError ? <div className={styles.syncWarning}>{storeError}</div> : null}
@@ -1030,6 +1026,14 @@ function submitBuyActivity() {
             })}
           </div>
         </section>
+
+        <div className={styles.guestAddEntryRow}>
+            <button className={styles.addBtn} onClick={openModal} type="button">
+            <span className={styles.addPlus}>＋</span>
+            Add entry
+          </button>
+        </div>
+    
 
         <div className={styles.tabs} role="tablist" aria-label="You Inc sections">
           {SECTION_ORDER.map((key) => (
