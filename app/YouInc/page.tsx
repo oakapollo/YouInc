@@ -1896,6 +1896,20 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   const renderTooltip = tooltip?.candle ?? hover;
   const tooltipEvents = renderTooltip ? txByBucket.get(renderTooltip.t)?.length ?? 0 : 0;
 
+  const activeChartPoint = renderTooltip ?? selectedCandle;
+  const activeVisibleIndex = activeChartPoint ? visibleData.findIndex((entry) => entry.t === activeChartPoint.t) : -1;
+  const activeX = activeVisibleIndex >= 0 ? pxX(activeVisibleIndex) : null;
+  const activeY = activeChartPoint ? yToPx(activeChartPoint.c) : null;
+
+  const selectedIndex = selectedCandle ? data.findIndex((entry) => entry.t === selectedCandle.t) : -1;
+  const previousCandle = selectedIndex > 0 ? data[selectedIndex - 1] : null;
+  const absoluteMove = selectedCandle && previousCandle ? selectedCandle.c - previousCandle.c : 0;
+  const percentMove = selectedCandle && previousCandle && previousCandle.c !== 0 ? (absoluteMove / previousCandle.c) * 100 : 0;
+  const movementIsUp = absoluteMove >= 0;
+  const movementArrow = movementIsUp ? "↑" : "↓";
+  const movementClass = movementIsUp ? styles.txPositive : styles.txNegative;
+  const periodLabel = timeframe === "1d" ? "previous day" : timeframe === "3d" ? "previous 3 days" : timeframe === "1w" ? "previous week" : "previous month";
+
   const detailRange = useMemo(() => {
     if (!selectedCandle) return null;
     const start = selectedCandle.t;
@@ -1959,7 +1973,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
       <div className={styles.chartWrap} ref={containerRef}>
         {!data.length ? (
           <div style={{ padding: 12, opacity: 0.7, fontSize: 13 }}>
-            No activity yet — hit Complete / Hold buttons to print candles.
+            No activity yet — hit Complete / Hold buttons to start the chart.
           </div>
         ) : (
           <svg
@@ -2006,13 +2020,44 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
               const bot = Math.max(yO, yC);
               const bodyH = Math.max(2, bot - top);
 
+              const isSelected = selectedCandleKey === d.t;
+
               return (
-                <g key={d.t} opacity={selectedCandleKey === d.t ? 1 : 0.92}>
-                  <line x1={x} x2={x} y1={yH} y2={yL} stroke={stroke} strokeWidth={2} opacity={0.85} />
-                  <rect x={x - bodyW / 2} y={top} width={bodyW} height={bodyH} rx={3} fill={fill} stroke={stroke} strokeWidth={1} />
+                <g key={d.t} opacity={isSelected ? 1 : 0.92}>
+                  {isSelected ? (
+                    <rect
+                      x={x - Math.max(bodyW, step * 0.72) / 2}
+                      y={padding.top}
+                      width={Math.max(bodyW, step * 0.72)}
+                      height={h - padding.top - padding.bottom}
+                      rx={10}
+                      fill="rgba(45,212,191,0.08)"
+                      stroke="rgba(45,212,191,0.55)"
+                      strokeWidth={1.5}
+                    />
+                  ) : null}
+                  <line x1={x} x2={x} y1={yH} y2={yL} stroke={stroke} strokeWidth={isSelected ? 3 : 2} opacity={isSelected ? 1 : 0.85} />
+                  <rect
+                    x={x - bodyW / 2}
+                    y={top}
+                    width={bodyW}
+                    height={bodyH}
+                    rx={3}
+                    fill={fill}
+                    stroke={isSelected ? "rgba(255,255,255,0.9)" : stroke}
+                    strokeWidth={isSelected ? 2.5 : 1}
+                  />
                 </g>
               );
             })}
+
+            {activeX !== null && activeY !== null ? (
+              <g pointerEvents="none">
+                <line x1={activeX} x2={activeX} y1={padding.top} y2={h - padding.bottom} stroke="rgba(255,255,255,0.32)" strokeWidth={1} strokeDasharray="5 6" />
+                <line x1={padding.left} x2={w - padding.right} y1={activeY} y2={activeY} stroke="rgba(255,255,255,0.28)" strokeWidth={1} strokeDasharray="5 6" />
+                <circle cx={activeX} cy={activeY} r={5.5} fill="rgba(45,212,191,0.95)" stroke="rgba(255,255,255,0.9)" strokeWidth={2} />
+              </g>
+            ) : null}
 
             {/* sparse bottom labels */}
             {visibleData.map((d, i) => {
@@ -2032,11 +2077,9 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
     {renderTooltip ? (
       <div className={styles.chartTooltip} style={{ left: tooltip?.x ?? 24, top: tooltip?.y ?? 24 }}>
-        <div className={styles.tooltipTitle}>O/H/L/C</div>
-        <div className={styles.tooltipValue}>
-          {renderTooltip.o.toFixed(3)} · {renderTooltip.h.toFixed(3)} · {renderTooltip.l.toFixed(3)} · {renderTooltip.c.toFixed(3)}
-        </div>
-        <div className={styles.tooltipMeta}>{tooltipEvents} events</div>
+        <div className={styles.tooltipTitle}>Price</div>
+        <div className={styles.tooltipValue}>U${renderTooltip.c.toFixed(3)}</div>
+        <div className={styles.tooltipMeta}>{tooltipEvents} logs</div>
       </div>
     ) : null}
   </div>
@@ -2044,13 +2087,13 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   <div className={`${styles.detailsPanel} ${selectedCandle ? styles.detailsPanelOpen : ""}`}>
     <div className={styles.detailsHeader}>
       <div>
-        <div className={styles.detailsTitle}>Candle Details</div>
+        <div className={styles.detailsTitle}>Selected period</div>
         {selectedCandle && detailRange ? (
           <div className={styles.detailsRange}>
             {londonDateTime.format(new Date(detailRange.start))} – {londonDateTime.format(new Date(detailRange.end))}
           </div>
         ) : (
-          <div className={styles.detailsRange}>Tap a candle to inspect what happened.</div>
+          <div className={styles.detailsRange}>Tap the chart to see what changed.</div>
         )}
       </div>
       {selectedCandle ? (
@@ -2063,24 +2106,23 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
           <div className={styles.detailsBody}>
             <div className={styles.detailsStats}>
               <div>
-                <span>Open</span>
+                <span>Started at</span>
                 <strong>U${selectedCandle.o.toFixed(3)}</strong>
               </div>
               <div>
-                <span>High</span>
-                <strong>U${selectedCandle.h.toFixed(3)}</strong>
-              </div>
-              <div>
-                <span>Low</span>
-                <strong>U${selectedCandle.l.toFixed(3)}</strong>
-              </div>
-              <div>
-                <span>Close</span>
+                <span>Price</span>
                 <strong>U${selectedCandle.c.toFixed(3)}</strong>
               </div>
               <div>
-                <span>MarketCap</span>
-                <strong>{Math.round(selectedCandle.c * 10000).toLocaleString()} UC</strong>
+                <span>Change</span>
+                {previousCandle ? (
+                  <strong className={movementClass}>
+                    {movementArrow} U${Math.abs(absoluteMove).toFixed(3)} · {percentMove >= 0 ? "+" : ""}
+                    {percentMove.toFixed(2)}% from {periodLabel}
+                  </strong>
+                ) : (
+                  <strong>First logged period</strong>
+                )}
               </div>
             </div>
 
