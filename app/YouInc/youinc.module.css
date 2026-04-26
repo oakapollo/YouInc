@@ -748,10 +748,6 @@
 }
 
 /* --- Scroll + tap feedback patch --- */
-html,
-body {
-  touch-action: pan-y;
-}
 
 .page {
   overflow-x: clip;
