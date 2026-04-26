@@ -146,6 +146,7 @@ export default function GuestPage() {
   const [celebrate, setCelebrate] = useState(false);
   const [visibleZone, setVisibleZone] = useState<"top" | "list" | "chart" | "details">("top");
   const [logFlash, setLogFlash] = useState<string | null>(null);
+  const [introDone, setIntroDone] = useState(false);
 
   const tabsRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
@@ -161,6 +162,14 @@ export default function GuestPage() {
   const selectedPct = selected && previous && previous.c !== 0 ? (selectedMove / previous.c) * 100 : 0;
   const isSelectedUp = selectedMove >= 0;
   const selectedPeriodLabel = periodWord(tf);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setIntroDone(true);
+    }, 2200);
+
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     const targets = [
@@ -349,6 +358,16 @@ export default function GuestPage() {
 
   return (
     <div className={styles.page}>
+      {!introDone ? (
+        <div className={styles.introOverlay} aria-hidden="true">
+          <div className={styles.introLogo}>
+            <span className={styles.introLeft}>&gt;---</span>
+            <span className={styles.introName}>You Inc.</span>
+            <span className={styles.introRight}>---&lt;</span>
+          </div>
+        </div>
+      ) : null}
+
       <div className={styles.glowA} />
       <div className={styles.glowB} />
       <div className={styles.glowC} />
@@ -727,12 +746,21 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, pointerText, 
   const activeY = active ? y(active.c) : null;
   const latestIndex = latest ? candles.findIndex((c) => c.t === latest.t) : -1;
   const pointerX = latestIndex >= 0 ? padding.left + latestIndex * xStep + xStep / 2 : w * 0.78;
-  const pointerHighY = latest ? y(latest.h) : h * 0.35;
-  const pointerEmojiY = Math.max(padding.top + 42, pointerHighY - 18);
-  const pointerTapY = Math.max(padding.top + 18, pointerEmojiY - 24);
+  const pointerY = latest ? y(latest.h) : h * 0.35;
+  const pointerLeft = `${(pointerX / w) * 100}%`;
+  const pointerTop = `${(Math.max(22, pointerY - 18) / h) * 100}%`;
 
   return (
     <div className={styles.chartWrap}>
+      {shouldPulse ? (
+        <div
+          className={styles.guestPointer}
+          style={{ left: pointerLeft, top: pointerTop, right: "auto" }}
+          aria-hidden="true"
+        >
+          {pointerText}
+        </div>
+      ) : null}
       <svg className={styles.chartSvg} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Guest progress chart" onMouseLeave={() => setHovered(null)}>
         <line x1={padding.left} x2={w - padding.right} y1={h - padding.bottom} y2={h - padding.bottom} stroke="rgba(255,255,255,0.12)" />
 
@@ -769,13 +797,6 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, pointerText, 
             </g>
           );
         })}
-
-        {shouldPulse ? (
-          <g className={styles.guestSvgPointer} aria-hidden="true">
-            <text x={pointerX} y={pointerTapY} textAnchor="middle" className={styles.guestSvgPointerLabel}>Tap</text>
-            <text x={pointerX} y={pointerEmojiY} textAnchor="middle" className={styles.guestSvgPointerEmoji}>{pointerText}</text>
-          </g>
-        ) : null}
       </svg>
     </div>
   );
