@@ -1259,15 +1259,27 @@ select.input {
     min-height: 300px;
   }
 }
-/* Keeps the tutorial finger attached to the actual last candle inside the SVG coordinate system. */
-.guestChartPointer {
-  font-size: 34px;
-  filter: drop-shadow(0 4px 10px rgba(0, 0, 0, 0.55));
+
+/* --- Guest chart pointer: SVG layer keeps Tap/emoji above latest candle --- */
+.guestSvgPointer {
   pointer-events: none;
-  animation: guestChartPointerFloat 0.9s ease-in-out infinite alternate;
+  animation: guestSvgPointerFloat 0.9s ease-in-out infinite alternate;
+  filter: drop-shadow(0 0 10px rgba(45, 212, 191, 0.45));
 }
 
-@keyframes guestChartPointerFloat {
-  from { transform: translateY(-3px); }
-  to { transform: translateY(7px); }
+.guestSvgPointerLabel {
+  fill: rgba(255, 255, 255, 0.94);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+}
+
+.guestSvgPointerEmoji {
+  font-size: 34px;
+  font-weight: 900;
+}
+
+@keyframes guestSvgPointerFloat {
+  from { transform: translateY(0); }
+  to { transform: translateY(-7px); }
 }
