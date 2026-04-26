@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import styles from "../YouInc/youinc.module.css";
 
 type TabKey = "goals" | "good" | "bad" | "addictions";
 type Timeframe = "1d" | "3d" | "1w" | "1m";
 type Tx = { id: string; ts: number; deltaUC: number; label: string };
-type GoodHabit = { id: string; title: string; frequencyMode: "daily"; daysOfWeek: number[]; notes: string; createdAt: number };
+type DemoItem = { id: string; title: string; notes: string; createdAt: number };
 type Candle = { t: number; o: number; h: number; l: number; c: number; tx: Tx[] };
 
 type Step =
@@ -21,6 +21,18 @@ type Step =
   | "buy-complete"
   | "tap-candle"
   | "details"
+  | "bad-tab"
+  | "bad-add-entry"
+  | "bad-modal-add"
+  | "bad-reach"
+  | "bad-popup"
+  | "bad-sold"
+  | "goals-tab"
+  | "goal-add-entry"
+  | "goal-modal-add"
+  | "goal-reach"
+  | "goal-hold"
+  | "goal-chart"
   | "final";
 
 const SECTION_ORDER: TabKey[] = ["goals", "good", "bad", "addictions"];
@@ -31,10 +43,10 @@ const SECTION_TITLES: Record<TabKey, string> = {
   addictions: "Addictions",
 };
 const SECTION_SUBTITLES: Record<TabKey, string> = {
-  goals: "Bigger targets with deadlines.",
+  goals: "Big targets that move your chart.",
   good: "Reward consistency and build momentum.",
-  bad: "Track habits you want to stop feeding.",
-  addictions: "Monitor relapses with stronger penalties.",
+  bad: "Log behaviour you want to stop feeding.",
+  addictions: "Be honest when the strongest patterns pull back.",
 };
 
 function uid() {
@@ -71,6 +83,7 @@ function buildCandles(currentCapUC: number, txDesc: Tx[], tf: Timeframe): Candle
   const end = bucketStart(now, tf);
   const starts = Array.from({ length: count }, (_, i) => end - (count - 1 - i) * ms);
   const txAsc = [...txDesc].sort((a, b) => a.ts - b.ts);
+
   let cap = currentCapUC;
   for (const tx of txAsc) {
     if (tx.ts >= starts[0]) cap -= tx.deltaUC;
@@ -83,13 +96,33 @@ function buildCandles(currentCapUC: number, txDesc: Tx[], tf: Timeframe): Candle
     const open = cap;
     let high = cap;
     let low = cap;
+
     for (const tx of bucketTx) {
       cap = Math.max(0, cap + tx.deltaUC);
       high = Math.max(high, cap);
       low = Math.min(low, cap);
     }
-    return { t: start, o: priceFromCap(open), h: priceFromCap(high), l: priceFromCap(low), c: priceFromCap(cap), tx: bucketTx };
+
+    return {
+      t: start,
+      o: priceFromCap(open),
+      h: priceFromCap(high),
+      l: priceFromCap(low),
+      c: priceFromCap(cap),
+      tx: bucketTx,
+    };
   });
+}
+
+function periodWord(tf: Timeframe) {
+  if (tf === "1w") return "week";
+  if (tf === "1m") return "month";
+  if (tf === "3d") return "3 days";
+  return "day";
+}
+
+function formatMoney(value: number) {
+  return `U$${value.toFixed(3)}`;
 }
 
 export default function GuestPage() {
@@ -97,114 +130,205 @@ export default function GuestPage() {
   const [step, setStep] = useState<Step>("good-tab");
   const [tab, setTab] = useState<TabKey>("goals");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [goodTitle, setGoodTitle] = useState("Log my habits");
-  const [goodHabits, setGoodHabits] = useState<GoodHabit[]>([]);
+  const [modalKind, setModalKind] = useState<TabKey>("good");
+  const [entryTitle, setEntryTitle] = useState("Log my habits");
+  const [items, setItems] = useState<Record<TabKey, DemoItem[]>>({ goals: [], good: [], bad: [], addictions: [] });
   const [marketCapUC, setMarketCapUC] = useState(10000);
   const [tx, setTx] = useState<Tx[]>([]);
   const [tf, setTf] = useState<Timeframe>("1d");
   const [isBuyOpen, setIsBuyOpen] = useState(false);
   const [buyActivity, setBuyActivity] = useState("Do 5 push ups. Seriously, do it.");
   const [selected, setSelected] = useState<Candle | null>(null);
-  const [showMetricHelp, setShowMetricHelp] = useState(false);
+  const [showBadPopup, setShowBadPopup] = useState(false);
+  const [showGoalMessage, setShowGoalMessage] = useState(false);
+  const [celebrate, setCelebrate] = useState(false);
+  const [visibleZone, setVisibleZone] = useState<"top" | "list" | "chart" | "details">("top");
+  const [logFlash, setLogFlash] = useState<string | null>(null);
 
   const tabsRef = useRef<HTMLDivElement | null>(null);
-  const addEntryRef = useRef<HTMLButtonElement | null>(null);
-  const goodListRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<HTMLDivElement | null>(null);
-  const tfRef = useRef<HTMLDivElement | null>(null);
-  const buyRef = useRef<HTMLButtonElement | null>(null);
   const detailsRef = useRef<HTMLDivElement | null>(null);
 
   const price = marketCapUC / 10000;
   const candles = useMemo(() => buildCandles(marketCapUC, tx, tf), [marketCapUC, tx, tf]);
   const latestCandle = candles[candles.length - 1] ?? null;
+  const selectedIndex = selected ? candles.findIndex((c) => c.t === selected.t) : -1;
+  const previous = selectedIndex > 0 ? candles[selectedIndex - 1] : null;
+  const selectedMove = selected && previous ? selected.c - previous.c : 0;
+  const selectedPct = selected && previous && previous.c !== 0 ? (selectedMove / previous.c) * 100 : 0;
+  const isSelectedUp = selectedMove >= 0;
 
-  function scrollTo(ref: React.RefObject<HTMLElement | null>) {
-    window.setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+  useEffect(() => {
+    const targets = [
+      { name: "top" as const, ref: tabsRef },
+      { name: "list" as const, ref: listRef },
+      { name: "chart" as const, ref: chartRef },
+      { name: "details" as const, ref: detailsRef },
+    ];
+
+    const onScroll = () => {
+      const midpoint = window.innerHeight * 0.45;
+      let best = targets[0].name;
+      let bestDistance = Number.POSITIVE_INFINITY;
+
+      for (const target of targets) {
+        const el = target.ref.current;
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        const distance = Math.abs(rect.top - midpoint);
+        if (distance < bestDistance) {
+          best = target.name;
+          bestDistance = distance;
+        }
+      }
+      setVisibleZone(best);
+    };
+
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onScroll);
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onScroll);
+    };
+  }, []);
+
+  function flash(message: string) {
+    setLogFlash(message);
+    window.setTimeout(() => setLogFlash(null), 1800);
   }
 
   function applyDelta(label: string, deltaUC: number) {
     const entry = { id: uid(), ts: Date.now(), deltaUC, label };
     setTx((prev) => [entry, ...prev].slice(0, 500));
     setMarketCapUC((prev) => Math.max(0, prev + deltaUC));
+    flash(`${deltaUC > 0 ? "+" : ""}${deltaUC} UC logged`);
   }
 
-  function pickGoodTab() {
-    setTab("good");
-    setStep("add-entry");
-    scrollTo(addEntryRef);
-  }
+  function openEntry(kind: TabKey) {
+    setModalKind(kind);
+    setTab(kind);
 
-  function openEntry() {
-    setTab("good");
-    setGoodTitle("Log my habits");
+    if (kind === "good") {
+      setEntryTitle("Log my habits");
+      setStep("modal-add");
+    } else if (kind === "bad") {
+      setEntryTitle("Bad Habit");
+      setStep("bad-modal-add");
+    } else if (kind === "goals") {
+      setEntryTitle("Start Tracking my Progress");
+      setStep("goal-modal-add");
+    } else {
+      setEntryTitle("Addiction Trigger");
+    }
+
     setIsModalOpen(true);
-    setStep("modal-add");
   }
 
-  function addHabit() {
-    const item: GoodHabit = {
+  function addEntry() {
+    const title = entryTitle.trim() || SECTION_TITLES[modalKind];
+    const item: DemoItem = {
       id: uid(),
-      title: goodTitle.trim() || "Log my habits",
-      frequencyMode: "daily",
-      daysOfWeek: [0, 1, 2, 3, 4, 5, 6],
-      notes: "Guest onboarding example",
+      title,
+      notes: modalKind === "goals" ? "Your first big win" : modalKind === "bad" ? "Honesty beats hiding" : "Demo entry",
       createdAt: Date.now(),
     };
-    setGoodHabits([item]);
+
+    setItems((prev) => ({ ...prev, [modalKind]: [item] }));
     setIsModalOpen(false);
-    setStep("hold");
-    scrollTo(goodListRef);
+
+    if (modalKind === "good") setStep("hold");
+    if (modalKind === "bad") setStep("bad-reach");
+    if (modalKind === "goals") setStep("goal-reach");
   }
 
-  function holdHabit(habit: GoodHabit) {
-    applyDelta(`${habit.title} (Good habit · Hold)`, 100);
+  function handleTabClick(key: TabKey) {
+    setTab(key);
+
+    if (key === "good" && step === "good-tab") setStep("add-entry");
+    if (key === "bad" && step === "bad-tab") setStep("bad-add-entry");
+    if (key === "goals" && step === "goals-tab") setStep("goal-add-entry");
+    if (key === "bad" && step === "bad-reach") {
+      setShowBadPopup(true);
+      setStep("bad-popup");
+    }
+    if (key === "goals" && step === "goal-reach") setStep("goal-hold");
+  }
+
+  function holdGood(item: DemoItem) {
+    applyDelta(`${item.title} · Good habit`, 100);
     setTf("1d");
     setStep("chart-day");
-    scrollTo(chartRef);
   }
 
-  function acknowledgeDayChart() {
-    setStep("tf-info");
-    scrollTo(tfRef);
+  function soldBad(item: DemoItem) {
+    applyDelta(`${item.title} · Bad habit`, -50);
+    setStep("goals-tab");
   }
 
-  function acknowledgeTfInfo() {
-    setStep("buy-open");
-    scrollTo(buyRef);
+  function holdGoal(item: DemoItem) {
+    applyDelta(`${item.title} · Goal complete`, 400);
+    setTf("1d");
+    setCelebrate(true);
+    setTimeout(() => setCelebrate(false), 2200);
+    setStep("goal-chart");
+    setShowGoalMessage(true);
   }
 
   function openBuy() {
     setIsBuyOpen(true);
     setBuyActivity("Do 5 push ups. Seriously, do it.");
     setStep("buy-complete");
-    scrollTo(chartRef);
   }
 
   function completeBuy() {
     applyDelta(`BUY: ${buyActivity.trim() || "Do 5 push ups"}`, 25);
     setIsBuyOpen(false);
     setStep("tap-candle");
-    scrollTo(chartRef);
   }
 
   function selectCandle(candle: Candle) {
     setSelected(candle);
-    if (step === "tap-candle") {
-      setStep("details");
-      setShowMetricHelp(true);
-      scrollTo(detailsRef);
-    }
+    if (step === "tap-candle") setStep("details");
   }
 
-  function finishMetricHelp() {
-    setShowMetricHelp(false);
-    setStep("final");
+  function continueAfterBreakdown() {
+    setStep("bad-tab");
+  }
+
+  function closeBadPopup() {
+    setShowBadPopup(false);
+    setStep("bad-sold");
   }
 
   function isHighlight(target: Step) {
     return step === target ? styles.guestPulse : "";
   }
+
+  function activeAddHighlight() {
+    if (step === "add-entry" || step === "bad-add-entry" || step === "goal-add-entry") return styles.guestPulse;
+    return "";
+  }
+
+  function bottomPrompt() {
+    if (step === "hold" && visibleZone !== "list") return "Scroll to your Good Habits list, then tap Hold.";
+    if (step === "chart-day" && visibleZone !== "chart") return "Scroll to your chart to see what changed.";
+    if (step === "tf-info" && visibleZone !== "chart") return "Scroll to the chart controls and try the time views.";
+    if (step === "buy-open" && visibleZone !== "chart") return "Scroll to the chart controls, then tap BUY +25 UC.";
+    if (step === "tap-candle" && visibleZone !== "chart") return "Scroll to the chart and tap the highlighted point.";
+    if (step === "details" && visibleZone !== "details") return "Scroll to the breakdown below the chart.";
+    if (step === "bad-tab" || step === "bad-add-entry") return "Go back to the tabs and open Bad Habits.";
+    if (step === "bad-reach") return "Scroll to the tabs, then switch to Bad Habits.";
+    if (step === "bad-sold" && visibleZone !== "list") return "Scroll to your Bad Habits list, then tap Sold.";
+    if (step === "goals-tab" || step === "goal-add-entry") return "Go back to the tabs and open Goals.";
+    if (step === "goal-reach") return "Scroll to the tabs, then switch to Goals.";
+    if (step === "goal-hold" && visibleZone !== "list") return "Scroll to your Goals list, then complete your first goal.";
+    if (step === "goal-chart" && visibleZone !== "chart") return "Scroll to the chart to see the boost.";
+    return null;
+  }
+
+  const prompt = bottomPrompt();
 
   return (
     <div className={styles.page}>
@@ -217,14 +341,14 @@ export default function GuestPage() {
           <div className={styles.brand}>
             <div className={styles.logo} />
             <div className={styles.brandText}>
-              <div className={styles.eyebrow}>You Inc. Guest Mode</div>
-              <div className={styles.title}>You are the stock.</div>
-              <div className={styles.subTitle}>Try the loop before creating an account.</div>
+              <div className={styles.eyebrow}>You Inc.</div>
+              <div className={styles.title}>This is your first chart.</div>
+              <div className={styles.subTitle}>Every honest action moves the price of you.</div>
             </div>
           </div>
           <div className={styles.headerActions}>
             <a className={styles.secondaryBtn} href="/login">Login</a>
-            <button ref={addEntryRef} className={`${styles.addBtn} ${isHighlight("add-entry")}`} onClick={openEntry} type="button">
+            <button className={`${styles.addBtn} ${activeAddHighlight()}`} onClick={() => openEntry(tab)} type="button">
               <span className={styles.addPlus}>＋</span>
               Add entry
             </button>
@@ -233,34 +357,41 @@ export default function GuestPage() {
 
         <section className={styles.heroCard}>
           <div className={styles.heroCopy}>
-            <div className={styles.heroTitle}>This is a guided demo, not your real account yet.</div>
-            <div className={styles.heroText}>Follow the highlighted buttons. You’ll add a habit, log it, read the candle, then create your own account.</div>
+            <div className={styles.heroTitle}>Start where you are. Log what you do. Watch the signal change.</div>
+            <div className={styles.heroText}>This is a guided first run. Treat it like your own account: add habits, log honest wins and slips, then decide whether you want to keep your chart going.</div>
           </div>
           <div className={styles.heroStats}>
             <div className={`${styles.heroStat} ${styles.heroStat_positive}`}><span>Market Cap</span><strong>{marketCapUC.toLocaleString()} UC</strong></div>
-            <div className={styles.heroStat}><span>Price</span><strong>U${price.toFixed(3)}</strong></div>
+            <div className={styles.heroStat}><span>Price</span><strong>{formatMoney(price)}</strong></div>
             <div className={styles.heroStat}><span>Entries</span><strong>{tx.length}</strong></div>
-            <div className={`${styles.heroStat} ${styles.heroStat_warning}`}><span>Mode</span><strong>Guest</strong></div>
+            <div className={`${styles.heroStat} ${styles.heroStat_warning}`}><span>Mode</span><strong>First run</strong></div>
           </div>
         </section>
 
         <div ref={tabsRef} className={styles.tabs} role="tablist" aria-label="Guest onboarding sections">
-          {SECTION_ORDER.map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={tab === key}
-              className={`${styles.tab} ${tab === key ? styles.tabActive : ""} ${key === "good" ? isHighlight("good-tab") : ""}`}
-              onClick={() => (key === "good" && step === "good-tab" ? pickGoodTab() : setTab(key))}
-            >
-              <span>{SECTION_TITLES[key]}</span>
-              <small>{SECTION_SUBTITLES[key]}</small>
-            </button>
-          ))}
+          {SECTION_ORDER.map((key) => {
+            const pulse =
+              (key === "good" && step === "good-tab") ||
+              (key === "bad" && (step === "bad-tab" || step === "bad-reach")) ||
+              (key === "goals" && (step === "goals-tab" || step === "goal-reach"));
+
+            return (
+              <button
+                key={key}
+                type="button"
+                role="tab"
+                aria-selected={tab === key}
+                className={`${styles.tab} ${tab === key ? styles.tabActive : ""} ${pulse ? styles.guestPulse : ""}`}
+                onClick={() => handleTabClick(key)}
+              >
+                <span>{SECTION_TITLES[key]}</span>
+                <small>{SECTION_SUBTITLES[key]}</small>
+              </button>
+            );
+          })}
         </div>
 
-        <section className={styles.panel}>
+        <section ref={listRef} className={styles.panel}>
           <div className={styles.panelHeader}>
             <div className={styles.panelHeaderCopy}>
               <div className={styles.panelHeaderTitle}>{SECTION_TITLES[tab]}</div>
@@ -268,60 +399,51 @@ export default function GuestPage() {
             </div>
           </div>
 
-          {tab !== "good" ? (
-            <EmptyState text="This demo focuses on Good Habits first. Tap Good Habits to continue." />
-          ) : (
-            <div ref={goodListRef} className={styles.list}>
-              {goodHabits.length === 0 ? (
-                <EmptyState text="No good habits yet. Tap Add entry to create your first one." />
-              ) : (
-                goodHabits.map((h) => (
-                  <div key={h.id} className={styles.card}>
-                    <div className={styles.cardMain}>
-                      <div className={styles.cardTitle}>{h.title}</div>
-                      <div className={styles.metaRow}>
-                        <span className={styles.metaPill}>Every day</span>
-                        <span className={styles.metaNote}>{h.notes}</span>
-                      </div>
-                    </div>
-                    <div className={styles.cardActions}>
-                      <button className={`${styles.actionPrimary} ${isHighlight("hold")}`} onClick={() => holdHabit(h)} type="button">
-                        Hold <span className={styles.delta}>+100 UC</span>
-                      </button>
-                      <button className={styles.actionDanger} type="button">Sold <span className={styles.delta}>-50 UC</span></button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          )}
+          <div className={styles.list}>
+            {items[tab].length === 0 ? (
+              <EmptyState text={emptyText(tab, step)} />
+            ) : (
+              items[tab].map((item) => (
+                <DemoCard
+                  key={item.id}
+                  item={item}
+                  tab={tab}
+                  holdHighlight={(tab === "good" && step === "hold") || (tab === "goals" && step === "goal-hold")}
+                  soldHighlight={tab === "bad" && step === "bad-sold"}
+                  onGoodHold={() => holdGood(item)}
+                  onBadSold={() => soldBad(item)}
+                  onGoalHold={() => holdGoal(item)}
+                />
+              ))
+            )}
+          </div>
         </section>
 
         <section ref={chartRef} className={styles.chartIntro}>
           <div>
             <div className={styles.chartIntroTitle}>Your chart</div>
-            <div className={styles.chartIntroText}>Your actions become candles. Better behaviour pushes the price up.</div>
+            <div className={styles.chartIntroText}>Your choices turn into price movement. Green is progress. Red is feedback.</div>
           </div>
-          <div ref={tfRef} className={`${styles.tfRow} ${isHighlight("tf-info")}`}>
-            <button ref={buyRef} className={`${styles.actionPrimary} ${isHighlight("buy-open")}`} onClick={openBuy} type="button">BUY <span className={styles.delta}>+25 UC</span></button>
+          <div className={`${styles.tfRow} ${(step === "tf-info" || step === "buy-open") ? styles.guestPulse : ""}`}>
+            <button className={`${styles.actionPrimary} ${isHighlight("buy-open")}`} onClick={openBuy} type="button">BUY <span className={styles.delta}>+25 UC</span></button>
             {(["1d", "3d", "1w", "1m"] as Timeframe[]).map((key) => (
               <button key={key} className={`${styles.tfBtn} ${tf === key ? styles.tfBtnOn : ""}`} onClick={() => setTf(key)} type="button">{key.toUpperCase()}</button>
             ))}
           </div>
         </section>
 
-        {step === "chart-day" ? (
-          <GuideBox title="Each candlestick = 1 day" text="Green means your close price ended higher than the open. Red means it ended lower." button="OK" onClick={acknowledgeDayChart} />
+        {step === "chart-day" && visibleZone === "chart" ? (
+          <GuideBox title="One point = one day" text="This view shows daily movement, so you can see how today changed your price." button="OK" onClick={() => setStep("tf-info")} />
         ) : null}
 
-        {step === "tf-info" ? (
-          <GuideBox title="Change the view" text="1D, 3D, 1W, and 1M change how much time one candle represents." button="OK" onClick={acknowledgeTfInfo} />
+        {step === "tf-info" && visibleZone === "chart" ? (
+          <GuideBox title="Change the view" text="Use 1D, 3D, 1W, or 1M to see your progress over different periods." button="OK" onClick={() => setStep("buy-open")} />
         ) : null}
 
         {isBuyOpen ? (
           <div className={styles.helperBox} style={{ marginBottom: 12 }}>
             <div className={styles.helperTitle}>Open a position</div>
-            <div className={styles.helperText}>One-off productive action. This is separate from recurring habits.</div>
+            <div className={styles.helperText}>A quick action you can do right now. Tiny wins still move the chart.</div>
             <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
               <input className={styles.input} value={buyActivity} onChange={(e) => setBuyActivity(e.target.value)} style={{ marginTop: 0, flex: "1 1 260px" }} />
               <button className={`${styles.primaryBtn} ${isHighlight("buy-complete")}`} type="button" onClick={completeBuy}>Completed <span className={styles.delta}>+25 UC</span></button>
@@ -329,28 +451,43 @@ export default function GuestPage() {
           </div>
         ) : null}
 
-        <MiniCandleChart candles={candles} selected={selected} latest={latestCandle} shouldPulse={step === "tap-candle"} onSelect={selectCandle} />
+        <MiniCandleChart candles={candles} selected={selected} latest={latestCandle} shouldPulse={step === "tap-candle" || step === "goal-chart"} onSelect={selectCandle} />
 
-        {step === "tap-candle" ? (
-          <GuideBox title="Tap the latest candle" text="Every candle can show what you logged inside that time period." button="I’ll tap it" onClick={() => scrollTo(chartRef)} />
+        {step === "tap-candle" && visibleZone === "chart" ? (
+          <GuideBox title="Tap the latest point" text="Every point can show what changed during that period." button="I’ll tap it" onClick={() => undefined} />
+        ) : null}
+
+        {showGoalMessage && visibleZone === "chart" ? (
+          <GuideBox title="That goal just moved you up." text="Completing goals gives your chart a bigger boost and makes progress visible." button="Got it" onClick={() => { setShowGoalMessage(false); setStep("final"); }} />
         ) : null}
 
         <section ref={detailsRef} className={`${styles.detailsPanel} ${styles.detailsPanelOpen}`}>
           <div className={styles.detailsHeader}>
             <div>
-              <div className={styles.detailsTitle}>Candle Details</div>
-              <div className={styles.detailsRange}>{selected ? new Date(selected.t).toLocaleString() : "Tap a candle to inspect it."}</div>
+              <div className={styles.detailsTitle}>Progress breakdown</div>
+              <div className={styles.detailsRange}>{selected ? new Date(selected.t).toLocaleString() : "Tap the chart to inspect a point."}</div>
             </div>
-            {showMetricHelp ? <button className={styles.primaryBtn} onClick={finishMetricHelp} type="button">Got it</button> : null}
+            {step === "details" ? <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={continueAfterBreakdown} type="button">Got it</button> : null}
           </div>
 
           <div className={styles.detailsBody}>
-            <div className={styles.detailsStats}>
-              <Metric label="Open" value={selected ? `U$${selected.o.toFixed(3)}` : "—"} help={showMetricHelp ? "Starting price for this candle." : undefined} />
-              <Metric label="High" value={selected ? `U$${selected.h.toFixed(3)}` : "—"} help={showMetricHelp ? "Highest price reached during this candle." : undefined} />
-              <Metric label="Low" value={selected ? `U$${selected.l.toFixed(3)}` : "—"} help={showMetricHelp ? "Lowest price reached during this candle." : undefined} />
-              <Metric label="Close" value={selected ? `U$${selected.c.toFixed(3)}` : "—"} help={showMetricHelp ? "Final price at the end of this candle." : undefined} />
-              <Metric label="MarketCap" value={`${marketCapUC.toLocaleString()} UC`} help={showMetricHelp ? "Your main score. Actions add or remove UC." : undefined} />
+            <div className={styles.guestPerformanceBox}>
+              <div>
+                <span>Price</span>
+                <strong>{selected ? formatMoney(selected.c) : "—"}</strong>
+              </div>
+              <div>
+                <span>{selected ? (isSelectedUp ? "Up" : "Down") : "Change"}</span>
+                <strong className={selected ? (isSelectedUp ? styles.txPositive : styles.txNegative) : ""}>
+                  {selected && previous ? `${isSelectedUp ? "+" : ""}${formatMoney(Math.abs(selectedMove)).replace("U$", "$")}` : "—"}
+                </strong>
+              </div>
+              <div>
+                <span>From previous {periodWord(tf)}</span>
+                <strong className={selected ? (isSelectedUp ? styles.txPositive : styles.txNegative) : ""}>
+                  {selected && previous ? `${selectedPct >= 0 ? "+" : ""}${selectedPct.toFixed(2)}%` : "—"}
+                </strong>
+              </div>
             </div>
 
             <div className={styles.txList}>
@@ -360,21 +497,38 @@ export default function GuestPage() {
                   <div className={`${styles.txDelta} ${entry.deltaUC >= 0 ? styles.txPositive : styles.txNegative}`}>{entry.deltaUC > 0 ? "+" : ""}{entry.deltaUC} UC</div>
                 </div>
               ))}
+              {!tx.length ? <div className={styles.emptyTx}>Your logged actions will appear here.</div> : null}
             </div>
           </div>
         </section>
 
-        {step === "final" ? (
+        {showBadPopup ? (
           <div className={styles.modalOverlay} role="dialog" aria-modal="true">
             <div className={styles.modal}>
-              <div className={styles.modalHeader}><div className={styles.modalTitle}>Are you ready?</div></div>
+              <div className={styles.modalHeader}><div className={styles.modalTitle}>Honesty keeps the chart real.</div></div>
               <div className={styles.modalBody}>
                 <div className={styles.helperText} style={{ fontSize: 15, lineHeight: 1.7 }}>
-                  Stop guessing whether you’re improving. Track the signal, cut the noise, and make your next candle count.
+                  Some days your discipline slips, and that is okay. The point is not to pretend. Log it, learn from it, and keep moving.
                 </div>
               </div>
               <div className={styles.modalFooter}>
-                <button className={styles.primaryBtn} onClick={() => router.push("/register")} type="button">Let&apos;s get started</button>
+                <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={closeBadPopup} type="button">Close</button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {step === "final" ? (
+          <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+            <div className={styles.modal}>
+              <div className={styles.modalHeader}><div className={styles.modalTitle}>Ready to keep the chart going?</div></div>
+              <div className={styles.modalBody}>
+                <div className={styles.helperText} style={{ fontSize: 15, lineHeight: 1.7 }}>
+                  You just logged wins, slips, and a goal. Create your account and make tomorrow&apos;s chart belong to you.
+                </div>
+              </div>
+              <div className={styles.modalFooter}>
+                <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={() => router.push("/register")} type="button">Create my account</button>
               </div>
             </div>
           </div>
@@ -384,28 +538,39 @@ export default function GuestPage() {
           <div className={styles.modalOverlay} role="dialog" aria-modal="true">
             <div className={styles.modal}>
               <div className={styles.modalHeader}>
-                <div className={styles.modalTitle}>Add Good Habit</div>
+                <div className={styles.modalTitle}>Add {SECTION_TITLES[modalKind].slice(0, -1)}</div>
                 <button className={styles.iconBtn} onClick={() => setIsModalOpen(false)} aria-label="Close modal" type="button">✕</button>
               </div>
               <div className={styles.modalBody}>
                 <div className={styles.form}>
-                  <label className={styles.label}>Habit<input className={styles.input} value={goodTitle} onChange={(e) => setGoodTitle(e.target.value)} autoFocus /></label>
+                  <label className={styles.label}>{modalKind === "goals" ? "Goal" : modalKind === "bad" ? "Bad habit" : "Habit"}<input className={styles.input} value={entryTitle} onChange={(e) => setEntryTitle(e.target.value)} autoFocus /></label>
                   <div className={styles.row2}>
-                    <label className={styles.label}>Frequency<select className={styles.input} value="daily" disabled><option>Every day</option></select></label>
-                    <label className={styles.label}>Notes<input className={styles.input} value="tracking habits is also a habit" readOnly /></label>
+                    <label className={styles.label}>Type<input className={styles.input} value={SECTION_TITLES[modalKind]} readOnly /></label>
+                    <label className={styles.label}>Notes<input className={styles.input} value={modalKind === "bad" ? "honesty beats hiding" : modalKind === "goals" ? "make progress visible" : "tracking habits is also a habit"} readOnly /></label>
                   </div>
                 </div>
               </div>
               <div className={styles.modalFooter}>
                 <button className={styles.ghostBtn} onClick={() => setIsModalOpen(false)} type="button">Cancel</button>
-                <button className={`${styles.primaryBtn} ${isHighlight("modal-add")}`} onClick={addHabit} disabled={!goodTitle.trim()} type="button">Add</button>
+                <button className={`${styles.primaryBtn} ${(step === "modal-add" || step === "bad-modal-add" || step === "goal-modal-add") ? styles.guestPulse : ""}`} onClick={addEntry} disabled={!entryTitle.trim()} type="button">Add</button>
               </div>
             </div>
           </div>
         ) : null}
+
+        {prompt ? <div className={styles.guestBottomBar}>{prompt}</div> : null}
+        {logFlash ? <div className={styles.logFlash}><span className={styles.logFlashDot}>✓</span>{logFlash}</div> : null}
+        {celebrate ? <GoalCelebration /> : null}
       </div>
     </div>
   );
+}
+
+function emptyText(tab: TabKey, step: Step) {
+  if (tab === "good" && step === "add-entry") return "Tap Add entry to create your first good habit.";
+  if (tab === "bad" && step === "bad-add-entry") return "Tap Add entry to create a bad habit you want to track honestly.";
+  if (tab === "goals" && step === "goal-add-entry") return "Tap Add entry to create your first goal.";
+  return "Nothing here yet. Use Add entry when this section is highlighted.";
 }
 
 function EmptyState({ text }: { text: string }) {
@@ -416,16 +581,64 @@ function GuideBox({ title, text, button, onClick }: { title: string; text: strin
   return (
     <div className={styles.guestGuideBox}>
       <div><div className={styles.helperTitle}>{title}</div><div className={styles.helperText}>{text}</div></div>
-      <button className={styles.primaryBtn} onClick={onClick} type="button">{button}</button>
+      <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={onClick} type="button">{button}</button>
     </div>
   );
 }
 
-function Metric({ label, value, help }: { label: string; value: string; help?: string }) {
-  return <div className={help ? styles.guestMetricHelp : ""}><span>{label}</span><strong>{value}</strong>{help ? <small>{help}</small> : null}</div>;
+function DemoCard({
+  item,
+  tab,
+  holdHighlight,
+  soldHighlight,
+  onGoodHold,
+  onBadSold,
+  onGoalHold,
+}: {
+  item: DemoItem;
+  tab: TabKey;
+  holdHighlight: boolean;
+  soldHighlight: boolean;
+  onGoodHold: () => void;
+  onBadSold: () => void;
+  onGoalHold: () => void;
+}) {
+  return (
+    <div className={styles.card}>
+      <div className={styles.cardMain}>
+        <div className={styles.cardTitle}>{item.title}</div>
+        <div className={styles.metaRow}>
+          <span className={styles.metaPill}>{tab === "goals" ? "Goal" : tab === "bad" ? "Pattern" : "Every day"}</span>
+          <span className={styles.metaNote}>{item.notes}</span>
+        </div>
+      </div>
+      <div className={styles.cardActions}>
+        {tab === "goals" ? (
+          <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoalHold} type="button">Complete <span className={styles.delta}>+400 UC</span></button>
+        ) : tab === "bad" ? (
+          <button className={`${styles.actionDanger} ${soldHighlight ? styles.guestPulse : ""}`} onClick={onBadSold} type="button">Sold <span className={styles.delta}>-50 UC</span></button>
+        ) : (
+          <>
+            <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoodHold} type="button">Hold <span className={styles.delta}>+100 UC</span></button>
+            <button className={styles.actionDanger} type="button">Sold <span className={styles.delta}>-50 UC</span></button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function GoalCelebration() {
+  return (
+    <div className={styles.goalCelebration} aria-hidden="true">
+      <div className={styles.goalBurst}>+400 UC</div>
+      {Array.from({ length: 18 }).map((_, i) => <span key={i} style={{ "--i": i } as React.CSSProperties} />)}
+    </div>
+  );
 }
 
 function MiniCandleChart({ candles, selected, latest, shouldPulse, onSelect }: { candles: Candle[]; selected: Candle | null; latest: Candle | null; shouldPulse: boolean; onSelect: (c: Candle) => void }) {
+  const [hovered, setHovered] = useState<Candle | null>(null);
   const w = 1000;
   const h = 320;
   const padding = { top: 18, right: 18, bottom: 28, left: 50 };
@@ -435,12 +648,24 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, onSelect }: {
   const span = Math.max(0.001, max - min);
   const xStep = (w - padding.left - padding.right) / Math.max(1, candles.length);
   const y = (v: number) => padding.top + ((max - v) / span) * (h - padding.top - padding.bottom);
+  const active = hovered ?? selected;
+  const activeIndex = active ? candles.findIndex((c) => c.t === active.t) : -1;
+  const activeX = activeIndex >= 0 ? padding.left + activeIndex * xStep + xStep / 2 : null;
+  const activeY = active ? y(active.c) : null;
 
   return (
     <div className={styles.chartWrap}>
-      {shouldPulse ? <div className={styles.guestPointer}>Tap this candle ↓</div> : null}
-      <svg className={styles.chartSvg} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Guest candlestick chart">
+      {shouldPulse ? <div className={styles.guestPointer}>Tap the highlighted point ↓</div> : null}
+      <svg className={styles.chartSvg} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Guest progress chart" onMouseLeave={() => setHovered(null)}>
         <line x1={padding.left} x2={w - padding.right} y1={h - padding.bottom} y2={h - padding.bottom} stroke="rgba(255,255,255,0.12)" />
+
+        {activeX !== null && activeY !== null ? (
+          <g className={styles.chartCrosshair}>
+            <line x1={activeX} x2={activeX} y1={padding.top} y2={h - padding.bottom} />
+            <line x1={padding.left} x2={w - padding.right} y1={activeY} y2={activeY} />
+          </g>
+        ) : null}
+
         {candles.map((c, i) => {
           const x = padding.left + i * xStep + xStep / 2;
           const bodyTop = y(Math.max(c.o, c.c));
@@ -449,10 +674,20 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, onSelect }: {
           const up = c.c >= c.o;
           const isLatest = latest?.t === c.t;
           const isSelected = selected?.t === c.t;
+          const isHovered = hovered?.t === c.t;
+
           return (
-            <g key={c.t} onClick={() => onSelect(c)} style={{ cursor: "pointer" }} className={shouldPulse && isLatest ? styles.guestCandlePulse : undefined}>
-              <line x1={x} x2={x} y1={y(c.h)} y2={y(c.l)} stroke={up ? "rgba(52,211,153,0.95)" : "rgba(251,113,133,0.95)"} strokeWidth={2} />
-              <rect x={x - Math.min(14, xStep * 0.35)} y={bodyTop} width={Math.min(28, xStep * 0.7)} height={bodyH} rx={4} fill={up ? "rgba(52,211,153,0.78)" : "rgba(251,113,133,0.78)"} stroke={isSelected ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.15)"} />
+            <g
+              key={c.t}
+              onClick={() => onSelect(c)}
+              onMouseEnter={() => setHovered(c)}
+              onTouchStart={() => setHovered(c)}
+              style={{ cursor: "pointer" }}
+              className={`${shouldPulse && isLatest ? styles.guestCandlePulse : ""} ${isSelected ? styles.selectedChartPoint : ""}`}
+            >
+              <line x1={x} x2={x} y1={y(c.h)} y2={y(c.l)} stroke={up ? "rgba(52,211,153,0.95)" : "rgba(251,113,133,0.95)"} strokeWidth={isSelected ? 4 : 2} />
+              <rect x={x - Math.min(14, xStep * 0.35)} y={bodyTop} width={Math.min(28, xStep * 0.7)} height={bodyH} rx={4} fill={up ? "rgba(52,211,153,0.78)" : "rgba(251,113,133,0.78)"} stroke={isSelected || isHovered ? "rgba(255,255,255,0.96)" : "rgba(255,255,255,0.15)"} strokeWidth={isSelected ? 3 : 1} />
+              {isSelected ? <circle cx={x} cy={y(c.c)} r={8} fill="rgba(255,255,255,0.95)" /> : null}
               <rect x={x - xStep / 2} y={0} width={xStep} height={h} fill="transparent" />
             </g>
           );
