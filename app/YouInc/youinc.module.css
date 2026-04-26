@@ -1,9 +1,7 @@
 .page {
   @apply min-h-screen text-white relative overflow-x-hidden;
   min-height: 100svh;
-  background: radial-gradient(1200px 600px at 20% 10%, rgba(124, 58, 237, 0.18), transparent 55%),
-  radial-gradient(900px 520px at 90% 15%, rgba(45, 212, 191, 0.16), transparent 60%),
-  linear-gradient(160deg, #0a0f1f 0%, #0d1529 50%, #0b1224 100%);
+  background: #000000;
   overscroll-behavior-y: auto;
   
 }
@@ -16,17 +14,17 @@
 
 .glowA {
   @apply -top-48 left-1/2 h-[520px] w-[520px] -translate-x-1/2;
-  background: rgba(124, 58, 237, 0.22);
+  background: rgba(255, 255, 255, 0.035);
 }
 
 .glowB {
   @apply top-24 left-10 h-[420px] w-[420px];
-  background: rgba(45, 212, 191, 0.18);
+  background: rgba(255, 255, 255, 0.025);
 }
 
 .glowC {
   @apply -bottom-32 right-0 h-[520px] w-[520px];
-  background: rgba(96, 165, 250, 0.14);
+  background: rgba(255, 255, 255, 0.018);
 }
 
 .shell {
@@ -39,7 +37,7 @@
   @apply flex items-center justify-between gap-4;
   position: relative;
   z-index: 20;
-  background: rgba(10, 15, 31, 0.92);
+  background: rgba(0, 0, 0, 0.92);
   border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   padding-top: calc(12px + env(safe-area-inset-top));
   padding-bottom: 12px;
@@ -51,7 +49,7 @@
     top: 0;
     backdrop-filter: blur(16px);
     -webkit-backdrop-filter: blur(16px);
-    background: linear-gradient(180deg, rgba(10, 15, 31, 0.92), rgba(10, 15, 31, 0.55));
+    background: rgba(0, 0, 0, 0.84);
   }
 }
 
@@ -61,7 +59,7 @@
 
 .logo {
   @apply h-10 w-10 rounded-2xl ring-1 ring-white/15 bg-white/10 backdrop-blur;
-  box-shadow: 0 12px 30px rgba(124, 58, 237, 0.2);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
 }
 
 .brandText {
@@ -82,8 +80,10 @@
 
 .addBtn {
   @apply inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-semibold text-white transition;
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.9), rgba(45, 212, 191, 0.9));
-  box-shadow: 0 12px 30px rgba(124, 58, 237, 0.25);
+  background: #f5f5f5;
+  color: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
 }
 
 .addBtn:hover {
@@ -121,7 +121,8 @@
 
 .tabActive {
   @apply text-white ring-white/20;
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.2), rgba(45, 212, 191, 0.18));
+  background: #f5f5f5;
+  color: #000000;
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08), 0 12px 30px rgba(0, 0, 0, 0.35);
 }
 
@@ -156,7 +157,7 @@
 
 .card {
   @apply rounded-2xl ring-1 ring-white/10 p-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
-  background: rgba(8, 12, 24, 0.7);
+  background: #0b0b0b;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
@@ -211,7 +212,7 @@
 
 .empty {
   @apply rounded-2xl ring-1 ring-white/10 p-10 text-center;
-  background: rgba(8, 12, 24, 0.55);
+  background: #0b0b0b;
 }
 
 .emptyIcon {
@@ -225,13 +226,13 @@
 /* Modal */
 .modalOverlay {
   @apply fixed inset-0 z-50 flex items-center justify-center p-4;
-  background: rgba(5, 8, 16, 0.7);
+  background: rgba(0, 0, 0, 0.74);
   backdrop-filter: blur(4px);
 }
 
 .modal {
   @apply w-full max-w-xl rounded-3xl ring-1 ring-white/10 overflow-hidden;
-  background: rgba(11, 16, 32, 0.96);
+  background: #080808;
   box-shadow: 0 30px 90px rgba(0, 0, 0, 0.6);
 }
 
@@ -260,7 +261,7 @@
 }
 
 .input {
-  @apply mt-2 w-full rounded-2xl px-4 py-3 text-sm text-white ring-1 ring-white/10 outline-none focus:ring-2 focus:ring-purple-400/40;
+  @apply mt-2 w-full rounded-2xl px-4 py-3 text-sm text-white ring-1 ring-white/10 outline-none focus:ring-2 focus:ring-white/25;
   background: rgba(255, 255, 255, 0.04);
 }
 
@@ -278,13 +279,13 @@
 }
 
 .dowPillOn {
-  @apply text-purple-100 ring-purple-300/20;
-  background: rgba(124, 58, 237, 0.2);
+  @apply text-white ring-white/25;
+  background: rgba(255, 255, 255, 0.12);
 }
 
 .helperBox {
   @apply rounded-2xl ring-1 ring-white/10 p-4;
-  background: rgba(8, 12, 24, 0.6);
+  background: #0b0b0b;
 }
 
 .helperTitle {
@@ -302,7 +303,9 @@
 
 .primaryBtn {
   @apply rounded-2xl px-4 py-2 text-sm font-semibold text-white transition disabled:opacity-40 disabled:cursor-not-allowed;
-  background: linear-gradient(135deg, rgba(124, 58, 237, 0.9), rgba(45, 212, 191, 0.9));
+  background: #f5f5f5;
+  color: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.18);
 }
 
 /* Chart area BELOW the panel */
@@ -333,7 +336,7 @@
 }
 
 .tfBtnOn {
-  @apply bg-cyan-400/15 text-cyan-200 ring-cyan-300/20;
+  @apply bg-white/15 text-white ring-white/25;
 }
 
 .chartSection {
@@ -349,7 +352,7 @@
 }
 
 .chartBtn {
-  @apply rounded-2xl px-4 py-2 text-sm text-white/80 ring-1 ring-white/10 hover:bg-white/10 transition focus:outline-none focus:ring-2 focus:ring-purple-300/40;
+  @apply rounded-2xl px-4 py-2 text-sm text-white/80 ring-1 ring-white/10 hover:bg-white/10 transition focus:outline-none focus:ring-2 focus:ring-white/25;
   background: rgba(255, 255, 255, 0.04);
     min-height: 44px;
 }
@@ -361,13 +364,13 @@
 }
 
 .autoFollow input {
-  accent-color: #a78bfa;
+  accent-color: #ffffff;
 }
 
 
 .chartWrap {
   @apply relative rounded-3xl ring-1 ring-white/10 p-3 sm:p-4;
-  background: rgba(8, 12, 24, 0.7);
+  background: #0b0b0b;
   margin-bottom: 28px;
   min-height: 320px;
 }
@@ -379,7 +382,7 @@
 
 .chartTooltip {
   @apply pointer-events-none absolute rounded-2xl text-white/90 px-3 py-2 text-xs ring-1 ring-white/10;
-  background: rgba(5, 8, 16, 0.88);
+  background: rgba(0, 0, 0, 0.9);
   transform: translate(-50%, -100%);
   backdrop-filter: blur(8px);
 }
@@ -398,7 +401,7 @@
 
 .detailsPanel {
   @apply rounded-3xl ring-1 ring-white/10 px-4 py-0;
-  background: rgba(8, 12, 24, 0.65);
+  background: #0b0b0b;
   overflow: visible;
   max-height: none;
   opacity: 1;
@@ -509,14 +512,12 @@
 
 
 .eyebrow {
-  @apply text-[10px] uppercase tracking-[0.24em] text-cyan-200/80;
+  @apply text-[10px] uppercase tracking-[0.24em] text-white/70;
 }
 
 .heroCard {
   @apply mt-6 rounded-[28px] ring-1 ring-white/10 p-5 sm:p-6;
-  background:
-    linear-gradient(135deg, rgba(124, 58, 237, 0.14), rgba(45, 212, 191, 0.08)),
-    rgba(255, 255, 255, 0.04);
+  background: #0b0b0b;
   display: grid;
   gap: 18px;
 }
@@ -539,7 +540,7 @@
 
 .heroStat {
   @apply rounded-2xl px-4 py-3 ring-1 ring-white/10;
-  background: rgba(7, 12, 24, 0.6);
+  background: #111111;
 }
 
 .heroStat span {
@@ -614,8 +615,8 @@
 }
 
 .sectionDotActive {
-  background: rgba(45, 212, 191, 0.95);
-  box-shadow: 0 0 0 4px rgba(45, 212, 191, 0.12);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
 }
 
 .chartIntro {
@@ -643,7 +644,7 @@
 
 .loadingState {
   @apply mt-20 rounded-[28px] ring-1 ring-white/10 p-6 flex items-center gap-4;
-  background: rgba(8, 12, 24, 0.62);
+  background: #0b0b0b;
   max-width: 560px;
 }
 
@@ -651,8 +652,8 @@
   width: 18px;
   height: 18px;
   border-radius: 999px;
-  background: linear-gradient(135deg, rgba(124, 58, 237, 1), rgba(45, 212, 191, 1));
-  box-shadow: 0 0 30px rgba(124, 58, 237, 0.35);
+  background: #f5f5f5;
+  box-shadow: 0 0 24px rgba(255, 255, 255, 0.18);
   animation: pulseGlow 1.2s ease-in-out infinite alternate;
 }
 
@@ -671,7 +672,7 @@
 
 .chartTooltip {
   @apply pointer-events-none absolute rounded-2xl text-white/90 px-3 py-2 text-xs ring-1 ring-white/10;
-  background: rgba(5, 8, 16, 0.92);
+  background: rgba(0, 0, 0, 0.92);
   transform: translate(-50%, calc(-100% - 10px));
   backdrop-filter: blur(8px);
   max-width: min(220px, calc(100% - 24px));
@@ -754,7 +755,7 @@
   position: relative;
   isolation: isolate;
   animation: guestPulseRing 1.05s ease-in-out infinite;
-  box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.65), 0 0 28px rgba(124, 58, 237, 0.38) !important;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55), 0 0 28px rgba(255, 255, 255, 0.16) !important;
 }
 
 .guestPulse::after {
@@ -762,7 +763,7 @@
   position: absolute;
   inset: -7px;
   border-radius: inherit;
-  border: 2px solid rgba(45, 212, 191, 0.72);
+  border: 2px solid rgba(255, 255, 255, 0.55);
   pointer-events: none;
   animation: guestPulseOutline 1.05s ease-in-out infinite;
 }
@@ -785,8 +786,8 @@
   gap: 14px;
   padding: 14px;
   border-radius: 24px;
-  border: 1px solid rgba(45, 212, 191, 0.22);
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.11), rgba(124, 58, 237, 0.12)), rgba(8, 12, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.035)), rgba(10, 10, 10, 0.72);
   box-shadow: 0 18px 55px rgba(0, 0, 0, 0.28);
 }
 
@@ -797,8 +798,8 @@
   z-index: 8;
   padding: 8px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(45, 212, 191, 0.24);
-  background: rgba(5, 8, 16, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.86);
   color: rgba(255, 255, 255, 0.9);
   font-size: 12px;
   font-weight: 700;
@@ -812,7 +813,7 @@
 
 .guestCandlePulse rect,
 .guestCandlePulse line {
-  filter: drop-shadow(0 0 10px rgba(45, 212, 191, 0.85));
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.55));
   animation: guestCandleGlow 1s ease-in-out infinite alternate;
 }
 
@@ -823,14 +824,14 @@
 
 .guestMetricHelp {
   position: relative;
-  border-color: rgba(45, 212, 191, 0.24) !important;
-  background: rgba(45, 212, 191, 0.08) !important;
+  border-color: rgba(255, 255, 255, 0.18) !important;
+  background: rgba(255, 255, 255, 0.055) !important;
 }
 
 .guestMetricHelp small {
   display: block;
   margin-top: 4px;
-  color: rgba(165, 243, 252, 0.9);
+  color: rgba(245, 245, 245, 0.9);
   line-height: 1.35;
 }
 
@@ -856,7 +857,7 @@
   position: relative;
   isolation: isolate;
   animation: guestPulseRing 1.05s ease-in-out infinite;
-  box-shadow: 0 0 0 0 rgba(45, 212, 191, 0.65), 0 0 28px rgba(124, 58, 237, 0.38) !important;
+  box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.55), 0 0 28px rgba(255, 255, 255, 0.16) !important;
 }
 
 .guestPulse::after {
@@ -864,7 +865,7 @@
   position: absolute;
   inset: -7px;
   border-radius: inherit;
-  border: 2px solid rgba(45, 212, 191, 0.72);
+  border: 2px solid rgba(255, 255, 255, 0.55);
   pointer-events: none;
   animation: guestPulseOutline 1.05s ease-in-out infinite;
 }
@@ -887,8 +888,8 @@
   gap: 14px;
   padding: 14px;
   border-radius: 24px;
-  border: 1px solid rgba(45, 212, 191, 0.22);
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.11), rgba(124, 58, 237, 0.12)), rgba(8, 12, 24, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.035)), rgba(10, 10, 10, 0.82);
   box-shadow: 0 18px 55px rgba(0, 0, 0, 0.28);
 }
 
@@ -902,10 +903,10 @@
   margin: 0 auto;
   padding: 14px 16px;
   border-radius: 24px;
-  border: 1px solid rgba(45, 212, 191, 0.24);
-  background: rgba(5, 8, 16, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.94);
   color: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.5), 0 0 35px rgba(45, 212, 191, 0.12);
+  box-shadow: 0 22px 80px rgba(0, 0, 0, 0.5), 0 0 35px rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   pointer-events: none;
@@ -918,7 +919,7 @@
   font-weight: 800;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: rgba(165, 243, 252, 0.9);
+  color: rgba(245, 245, 245, 0.9);
 }
 
 .guestCoachTitle {
@@ -948,8 +949,8 @@
   margin: 0 auto;
   padding: 13px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(45, 212, 191, 0.28);
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.16), rgba(124, 58, 237, 0.16)), rgba(5, 8, 16, 0.95);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.04)), rgba(0, 0, 0, 0.95);
   color: rgba(255, 255, 255, 0.92);
   box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45);
   font-size: 13px;
@@ -971,8 +972,8 @@
   z-index: 8;
   padding: 8px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(45, 212, 191, 0.24);
-  background: rgba(5, 8, 16, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.86);
   color: rgba(255, 255, 255, 0.9);
   font-size: 12px;
   font-weight: 800;
@@ -986,7 +987,7 @@
 
 .guestCandlePulse rect,
 .guestCandlePulse line {
-  filter: drop-shadow(0 0 10px rgba(45, 212, 191, 0.85));
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.55));
   animation: guestChartGlow 1s ease-in-out infinite alternate;
 }
 
@@ -1047,12 +1048,12 @@
   z-index: 2;
   padding: 18px 24px;
   border-radius: 999px;
-  border: 1px solid rgba(45, 212, 191, 0.34);
-  background: rgba(5, 8, 16, 0.92);
-  color: rgba(167, 243, 208, 1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.92);
+  color: rgba(245, 245, 245, 1);
   font-size: 26px;
   font-weight: 900;
-  box-shadow: 0 0 80px rgba(45, 212, 191, 0.32);
+  box-shadow: 0 0 80px rgba(255, 255, 255, 0.16);
   animation: goalBurstPop 1.2s ease both;
 }
 
@@ -1061,7 +1062,7 @@
   width: 9px;
   height: 22px;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(45, 212, 191, 1), rgba(124, 58, 237, 1));
+  background: linear-gradient(180deg, rgba(255, 255, 255, 1), rgba(120, 120, 120, 1));
   transform: rotate(calc(var(--i) * 20deg)) translateY(-20px);
   animation: goalConfetti 1.2s ease-out both;
 }
@@ -1106,8 +1107,8 @@
 .guestInlineTip {
   border-radius: 20px;
   padding: 14px 15px;
-  border: 1px solid rgba(45, 212, 191, 0.22);
-  background: linear-gradient(135deg, rgba(45, 212, 191, 0.1), rgba(124, 58, 237, 0.1)), rgba(8, 12, 24, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.035)), rgba(10, 10, 10, 0.72);
   color: rgba(255, 255, 255, 0.82);
   font-size: 13px;
   line-height: 1.55;
@@ -1145,10 +1146,10 @@ select.input {
   max-width: calc(100vw - 32px);
   padding: 12px 16px;
   border-radius: 999px;
-  border: 1px solid rgba(45, 212, 191, 0.28);
-  background: rgba(5, 8, 16, 0.92);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(0, 0, 0, 0.92);
   color: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45), 0 0 30px rgba(45, 212, 191, 0.14);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.45), 0 0 30px rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   animation: logFlashIn 1.8s ease both;
@@ -1165,7 +1166,7 @@ select.input {
   height: 22px;
   border-radius: 999px;
   background: rgba(16, 185, 129, 0.22);
-  color: rgba(167, 243, 208, 1);
+  color: rgba(245, 245, 245, 1);
   box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.22);
   flex: 0 0 auto;
 }
@@ -1264,7 +1265,7 @@ select.input {
 .guestSvgPointer {
   pointer-events: none;
   animation: guestSvgPointerFloat 0.9s ease-in-out infinite alternate;
-  filter: drop-shadow(0 0 10px rgba(45, 212, 191, 0.45));
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
 }
 
 .guestSvgPointerLabel {
@@ -1282,4 +1283,122 @@ select.input {
 @keyframes guestSvgPointerFloat {
   from { transform: translateY(0); }
   to { transform: translateY(-7px); }
+}
+
+
+/* --- Black minimalist theme override --- */
+.page {
+  background: #000000;
+}
+
+.glowA,
+.glowB,
+.glowC {
+  display: none;
+}
+
+.header {
+  background: rgba(0, 0, 0, 0.92);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+@media (min-width: 768px) {
+  .header {
+    background: rgba(0, 0, 0, 0.86);
+  }
+}
+
+.logo,
+.card,
+.panel,
+.modal,
+.topStats,
+.chartWrap,
+.detailsPanel,
+.empty,
+.heroCard,
+.heroStat,
+.chartIntro,
+.loadingState,
+.helperBox {
+  border-radius: 18px;
+  background: #0b0b0b;
+  box-shadow: none;
+}
+
+.card,
+.panel,
+.modal,
+.topStats,
+.chartWrap,
+.detailsPanel,
+.empty,
+.heroCard,
+.heroStat,
+.chartIntro,
+.loadingState,
+.helperBox,
+.guestGuideBox,
+.guestCoachCard,
+.guestBottomBar,
+.guestInlineTip,
+.logFlash {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.addBtn,
+.primaryBtn {
+  background: #f5f5f5;
+  color: #000000;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: none;
+}
+
+.secondaryBtn,
+.tab,
+.iconBtn,
+.ghostBtn,
+.tfBtn,
+.chartBtn,
+.autoFollow,
+.todayChange,
+.metaPill,
+.dowPill,
+.viewportBadge,
+.chartIntroBadge {
+  background: #111111;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: none;
+}
+
+.tabActive,
+.tfBtnOn,
+.dowPillOn {
+  background: #f5f5f5;
+  color: #000000;
+  border-color: rgba(255, 255, 255, 0.25);
+  box-shadow: none;
+}
+
+.input {
+  background: #0f0f0f;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.input:focus {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.sectionDotActive {
+  background: #f5f5f5;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+
+.guestSvgPointer {
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.35));
+}
+
+.guestCoachKicker,
+.guestMetricHelp small {
+  color: rgba(245, 245, 245, 0.82);
 }
