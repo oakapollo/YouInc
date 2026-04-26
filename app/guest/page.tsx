@@ -246,7 +246,7 @@ export default function GuestPage() {
       setShowBadPopup(true);
       setStep("bad-popup");
     }
-    if (modalKind === "goals") setStep("goal-reach");
+    if (modalKind === "goals") setStep("goal-hold");
   }
 
   function handleTabClick(key: TabKey) {
@@ -339,7 +339,6 @@ export default function GuestPage() {
     if (step === "bad-reach") return "Scroll to the tabs, then switch to Bad Habits.";
     if (step === "bad-sold" && visibleZone !== "list") return "Scroll to your Bad Habits list, then tap Sold.";
     if (step === "goals-tab" || step === "goal-add-entry") return "Go back to the tabs and open Goals.";
-    if (step === "goal-reach") return "Scroll to the tabs, then switch to Goals.";
     if (step === "goal-hold" && visibleZone !== "list") return "Scroll to your Goals list, then complete your first goal.";
     if (step === "goal-chart" && visibleZone !== "chart") return "Scroll to the chart, then tap the highlighted point.";
     return null;
@@ -394,7 +393,7 @@ export default function GuestPage() {
             const pulse =
               (key === "good" && step === "good-tab") ||
               (key === "bad" && (step === "bad-tab" || step === "bad-reach")) ||
-              (key === "goals" && (step === "goals-tab" || step === "goal-reach"));
+              (key === "goals" && step === "goals-tab");
 
             return (
               <button
@@ -482,14 +481,14 @@ export default function GuestPage() {
           </div>
         ) : null}
 
-        <MiniCandleChart candles={candles} selected={selected} latest={latestCandle} shouldPulse={step === "tap-candle" || step === "goal-chart"} pointerText={step === "goal-chart" ? "Tap the point." : "Tap the point first."} onSelect={selectCandle} />
+        <MiniCandleChart candles={candles} selected={selected} latest={latestCandle} shouldPulse={step === "tap-candle" || step === "goal-chart"} pointerText="👇" onSelect={selectCandle} />
 
         {step === "tap-candle" && visibleZone === "chart" ? (
-          <GuideBox title="Tap the point first" text="Tap the highlighted point on the chart before reading the breakdown." button="Tap the point" onClick={() => undefined} />
+          <GuideBox title="Tap the point first" text="👇 Tap the highlighted point on the chart." button="Tap the point" onClick={() => undefined} />
         ) : null}
 
         {showGoalMessage && step === "goal-chart" && visibleZone === "chart" ? (
-          <GuideBox title="Completing goals boosts your chart." text="That jump is your progress becoming visible. Tap the highlighted point to see what changed." button="Tap the point" onClick={() => undefined} />
+          <GuideBox title="Completing goals boosts your chart." text="👇 Tap the highlighted point to see what changed." button="Tap the point" onClick={() => undefined} />
         ) : null}
 
         <section ref={detailsRef} className={`${styles.detailsPanel} ${styles.detailsPanelOpen}`}>
@@ -613,7 +612,7 @@ function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "deta
   if (step === "tf-info" && visibleZone !== "chart") return { title: "Try the time views", text: "Scroll to the chart controls. 1D, 3D, 1W and 1M show different progress windows." };
   if (step === "buy-open") return { title: "Tiny action, real movement", text: "Tap BUY +25 UC. This is for a quick action you can do right now." };
   if (step === "buy-complete") return { title: "Do it, then log it", text: "The task is already filled in. Complete it and watch the chart respond." };
-  if (step === "tap-candle") return { title: "Pick the latest point", text: "Tap the highlighted point on the chart. The lines show exactly what you selected." };
+  if (step === "tap-candle") return { title: "Pick the latest point", text: "👇 Tap the highlighted point on the chart. The lines show what you selected." };
   if (step === "details" && visibleZone !== "details") return { title: "Read the result", text: "Scroll to the breakdown. You’ll see the price and the change from the previous period." };
   if (step === "bad-tab") return { title: "Now add honesty", text: "Tap Bad Habits. Progress is not only wins — it is also telling the truth." };
   if (step === "bad-add-entry") return { title: "Track the pattern", text: "Tap Add entry. I filled in a simple bad habit so you can log the slip honestly." };
@@ -621,9 +620,8 @@ function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "deta
   if (step === "bad-sold") return { title: "Log the slip", text: "Tap Sold -50 UC. No drama. Just honest feedback." };
   if (step === "goals-tab") return { title: "Now finish with a real boost", text: "Tap Goals. Goals are the big moves that push your chart higher." };
   if (step === "goal-add-entry") return { title: "Create the goal", text: "Tap Add entry. I filled in your first goal so you can see the dopamine hit." };
-  if (step === "goal-reach") return { title: "Open Goals", text: "Tap the Goals tab again to continue." };
   if (step === "goal-hold") return { title: "Complete the goal", text: "Tap Complete +400 UC. This one should feel bigger because goals are supposed to matter." };
-  if (step === "goal-chart" && visibleZone !== "chart") return { title: "Look at the jump", text: "Scroll to the chart, then tap the highlighted point." };
+  if (step === "goal-chart" && visibleZone !== "chart") return { title: "Look at the jump", text: "Scroll to the chart, then tap the highlighted point 👇." };
   if (step === "goal-details" && visibleZone !== "details") return { title: "Progress Breakdown", text: "Here you will see what you logged and how the selected period changed." };
   return null;
 }
@@ -732,7 +730,7 @@ function MiniCandleChart({ candles, selected, latest, shouldPulse, pointerText, 
 
   return (
     <div className={styles.chartWrap}>
-      {shouldPulse ? <div className={styles.guestPointer} style={{ left: pointerLeft, right: "auto", transform: "translateX(-50%)" }}>{pointerText} ↓</div> : null}
+      {shouldPulse ? <div className={styles.guestPointer} style={{ left: pointerLeft, right: "auto", transform: "translateX(-50%)" }}>{pointerText}</div> : null}
       <svg className={styles.chartSvg} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Guest progress chart" onMouseLeave={() => setHovered(null)}>
         <line x1={padding.left} x2={w - padding.right} y1={h - padding.bottom} y2={h - padding.bottom} stroke="rgba(255,255,255,0.12)" />
 

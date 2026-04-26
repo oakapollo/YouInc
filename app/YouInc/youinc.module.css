@@ -1123,3 +1123,74 @@
     justify-content: center;
   }
 }
+
+/* --- Safe scroll patch restored: keep this at the very bottom --- */
+.page {
+  overflow-x: clip;
+  overscroll-behavior-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.shell {
+  overflow: visible;
+  transform: none;
+  contain: none;
+}
+
+.sectionScroller {
+  display: flex;
+  width: 100%;
+  overflow-x: hidden;
+  overflow-y: visible;
+  scroll-snap-type: none;
+  overscroll-behavior: auto;
+  -webkit-overflow-scrolling: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  touch-action: pan-y;
+  isolation: auto;
+  contain: none;
+  padding-bottom: 8px;
+}
+
+.section {
+  flex: 0 0 100%;
+  min-width: 100%;
+  scroll-snap-align: none;
+  overflow: visible;
+  contain: none;
+}
+
+.chartWrap,
+.chartSection,
+.detailsPanel,
+.panel,
+.card,
+.heroCard,
+.topStats,
+.chartIntro {
+  overscroll-behavior: auto;
+  contain: none;
+}
+
+.chartSvg {
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+@media (max-width: 767px) {
+  .panel,
+  .chartWrap,
+  .detailsPanel,
+  .topStats,
+  .chartIntro,
+  .heroCard {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .chartWrap {
+    min-height: 300px;
+  }
+}
