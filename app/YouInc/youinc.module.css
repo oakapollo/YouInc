@@ -1533,25 +1533,34 @@ select.input {
     visibility: hidden;
   }
 }
-/* --- Chart view toggle --- */
-.viewToggle {
+/* --- Chart view toggle + habit intensity controls --- */
+.viewToggleGroup {
   display: inline-flex;
   align-items: center;
   gap: 4px;
   min-height: 44px;
   padding: 4px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: #111111;
+}
+
+.viewToggleLabel {
+  padding: 0 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.48);
 }
 
 .viewToggleBtn {
   min-height: 34px;
-  padding: 0 12px;
-  border-radius: 999px;
-  border: 1px solid transparent;
-  background: transparent;
-  color: rgba(255, 255, 255, 0.62);
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.72);
   font-size: 12px;
   font-weight: 800;
   transition: 0.18s ease;
@@ -1559,31 +1568,47 @@ select.input {
 }
 
 .viewToggleBtn:hover {
-  color: rgba(255, 255, 255, 0.9);
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .viewToggleBtnOn {
   background: #f5f5f5;
   color: #000000;
-  border-color: rgba(255, 255, 255, 0.22);
+  border-color: rgba(255, 255, 255, 0.25);
 }
 
-@media (max-width: 640px) {
-  .chartMeta {
-    justify-content: flex-start;
-  }
-
-  .viewToggle {
-    width: 100%;
-  }
-
-  .viewToggleBtn {
-    flex: 1;
-  }
+.lineChartPath {
+  fill: none;
+  stroke: rgba(245, 245, 245, 0.92);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 0 10px rgba(255, 255, 255, 0.18));
 }
 
-/* --- Habit intensity slider restored --- */
+.lineChartArea {
+  fill: rgba(255, 255, 255, 0.045);
+}
+
+.lineChartPoint {
+  fill: #0b0b0b;
+  stroke: rgba(245, 245, 245, 0.88);
+  stroke-width: 2;
+  cursor: pointer;
+}
+
+.lineChartHitArea {
+  fill: transparent;
+  cursor: pointer;
+}
+
+.lineChartPointSelected {
+  fill: #f5f5f5;
+  stroke: #f5f5f5;
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.72));
+}
+
 .intensityBox {
   display: grid;
   gap: 12px;
@@ -1634,4 +1659,15 @@ select.input {
 .intensitySlider {
   width: 100%;
   accent-color: #f5f5f5;
+}
+
+@media (max-width: 640px) {
+  .viewToggleGroup {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .viewToggleBtn {
+    flex: 1;
+  }
 }
