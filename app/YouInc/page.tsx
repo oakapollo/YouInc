@@ -31,22 +31,6 @@ const SECTION_SUBTITLES: Record<TabKey, string> = {
   addictions: "Monitor relapses and escalating penalties.",
 };
 
-const INTENSITY_OPTIONS = [
-  { hold: 10, sold: 10 },
-  { hold: 20, sold: 10 },
-  { hold: 40, sold: 20 },
-  { hold: 80, sold: 40 },
-  { hold: 100, sold: 50 },
-] as const;
-
-const DEFAULT_INTENSITY_INDEX = INTENSITY_OPTIONS.length - 1;
-
-type IntensityOption = (typeof INTENSITY_OPTIONS)[number];
-
-function getIntensityByIndex(index: number): IntensityOption {
-  return INTENSITY_OPTIONS[Math.max(0, Math.min(INTENSITY_OPTIONS.length - 1, index))] ?? INTENSITY_OPTIONS[DEFAULT_INTENSITY_INDEX];
-}
-
 type Goal = { id: string; title: string; expiry: string; createdAt: number };
 
 type GoodHabit = {
@@ -55,8 +39,6 @@ type GoodHabit = {
   frequencyMode: "daily" | "weekly";
   daysOfWeek: number[];
   notes: string;
-  holdUC?: number;
-  soldUC?: number;
   createdAt: number;
 };
 
@@ -65,9 +47,6 @@ type BadHabit = {
   title: string;
   expiryMode: "date" | "permanent";
   expiryDate?: string;
-  notes?: string;
-  holdUC?: number;
-  soldUC?: number;
   createdAt: number;
 };
 
@@ -435,13 +414,10 @@ export default function YouIncPage() {
   const [goodFrequencyMode, setGoodFrequencyMode] = useState<"daily" | "weekly">("daily");
   const [goodDays, setGoodDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [goodNotes, setGoodNotes] = useState("");
-  const [goodIntensityIndex, setGoodIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
 
   const [badTitle, setBadTitle] = useState("");
   const [badExpiryMode, setBadExpiryMode] = useState<"date" | "permanent">("date");
   const [badExpiryDate, setBadExpiryDate] = useState(todayISO());
-  const [badNotes, setBadNotes] = useState("");
-  const [badIntensityIndex, setBadIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
 
   const [addictionTitle, setAddictionTitle] = useState("");
 
@@ -739,9 +715,6 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
     return applyTaxes(kind, deltaUC, store.marketCapUC).effectiveDeltaUC;
   }
 
-  const goodIntensity = getIntensityByIndex(goodIntensityIndex);
-  const badIntensity = getIntensityByIndex(badIntensityIndex);
-
 function submitBuyActivity() {
   const a = buyActivity.trim();
   if (!a) return;
@@ -825,13 +798,10 @@ function submitBuyActivity() {
       setGoodFrequencyMode("daily");
       setGoodDays([1, 2, 3, 4, 5]);
       setGoodNotes("");
-      setGoodIntensityIndex(DEFAULT_INTENSITY_INDEX);
     } else if (nextTab === "bad") {
       setBadTitle("");
       setBadExpiryMode("date");
       setBadExpiryDate(todayISO());
-      setBadNotes("");
-      setBadIntensityIndex(DEFAULT_INTENSITY_INDEX);
     } else {
       setAddictionTitle("");
     }
@@ -960,8 +930,6 @@ function submitBuyActivity() {
         frequencyMode: goodFrequencyMode,
         daysOfWeek: goodFrequencyMode === "daily" ? [0, 1, 2, 3, 4, 5, 6] : goodDays,
         notes: goodNotes.trim(),
-        holdUC: goodIntensity.hold,
-        soldUC: goodIntensity.sold,
         createdAt: Date.now(),
       };
       updateStoreAndSave((s) => ({ ...s, goodHabits: [item, ...s.goodHabits] }));
@@ -976,9 +944,6 @@ function submitBuyActivity() {
         title: badTitle.trim(),
         expiryMode: badExpiryMode,
         expiryDate: badExpiryMode === "date" ? badExpiryDate : undefined,
-        notes: badNotes.trim(),
-        holdUC: badIntensity.hold,
-        soldUC: badIntensity.sold,
         createdAt: Date.now(),
       };
       updateStoreAndSave((s) => ({ ...s, badHabits: [item, ...s.badHabits] }));
@@ -1195,17 +1160,17 @@ function submitBuyActivity() {
                       <div className={styles.cardActions}>
                         <button
                           className={styles.actionPrimary}
-                          onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +(h.holdUC ?? 100))}
+                          onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +100)}
                           type="button"
                         >
-                          Hold <span className={styles.delta}>+{getPreviewDelta("good", h.holdUC ?? 100)} UC</span>
+                          Hold <span className={styles.delta}>+{getPreviewDelta("good", 100)} UC</span>
                         </button>
                         <button
                           className={styles.actionDanger}
-                          onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -(h.soldUC ?? 50))}
+                          onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -50)}
                           type="button"
                         >
-                          Sold <span className={styles.delta}>-{h.soldUC ?? 50} UC</span>
+                          Sold <span className={styles.delta}>-50 UC</span>
                         </button>
                         <button className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove" type="button">
                           ✕
@@ -1228,23 +1193,22 @@ function submitBuyActivity() {
                         <div className={styles.cardTitle}>{b.title}</div>
                         <div className={styles.metaRow}>
                           <span className={styles.metaPill}>{b.expiryMode === "permanent" ? "Permanent" : `Expiry: ${b.expiryDate}`}</span>
-                          {b.notes ? <span className={styles.metaNote}>{b.notes}</span> : null}
                         </div>
                       </div>
                       <div className={styles.cardActions}>
                         <button
                           className={styles.actionPrimary}
-                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +(b.holdUC ?? 100))}
+                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +100)}
                           type="button"
                         >
-                          Hold <span className={styles.delta}>+{getPreviewDelta("bad", b.holdUC ?? 100)} UC</span>
+                          Hold <span className={styles.delta}>+{getPreviewDelta("bad", 100)} UC</span>
                         </button>
                         <button
                           className={styles.actionDanger}
-                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -(b.soldUC ?? 50))}
+                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -50)}
                           type="button"
                         >
-                          Sold <span className={styles.delta}>-{b.soldUC ?? 50} UC</span>
+                          Sold <span className={styles.delta}>-50 UC</span>
                         </button>
                         <button className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove" type="button">
                           ✕
@@ -1468,25 +1432,6 @@ function submitBuyActivity() {
                       </label>
                     </div>
 
-                    <div className={styles.intensityBox}>
-                      <div className={styles.previewActions}>
-                        <span className={styles.previewHold}>Hold +{goodIntensity.hold}</span>
-                        <span className={styles.previewSold}>Sold -{goodIntensity.sold}</span>
-                      </div>
-                      <label className={styles.intensityLabel}>
-                        <span>Adjust intensity</span>
-                        <input
-                          className={styles.intensitySlider}
-                          type="range"
-                          min="0"
-                          max={INTENSITY_OPTIONS.length - 1}
-                          step="1"
-                          value={goodIntensityIndex}
-                          onChange={(e) => setGoodIntensityIndex(Number(e.target.value))}
-                        />
-                      </label>
-                    </div>
-
                     {goodFrequencyMode === "weekly" && (
                       <div className={styles.dowRow}>
                         {[0, 1, 2, 3, 4, 5, 6].map((d) => (
@@ -1532,30 +1477,6 @@ function submitBuyActivity() {
                         </div>
                       )}
                     </div>
-
-                    <label className={styles.label}>
-                      Notes
-                      <input className={styles.input} value={badNotes} onChange={(e) => setBadNotes(e.target.value)} placeholder="optional" />
-                    </label>
-
-                    <div className={styles.intensityBox}>
-                      <div className={styles.previewActions}>
-                        <span className={styles.previewHold}>Hold +{badIntensity.hold}</span>
-                        <span className={styles.previewSold}>Sold -{badIntensity.sold}</span>
-                      </div>
-                      <label className={styles.intensityLabel}>
-                        <span>Adjust intensity</span>
-                        <input
-                          className={styles.intensitySlider}
-                          type="range"
-                          min="0"
-                          max={INTENSITY_OPTIONS.length - 1}
-                          step="1"
-                          value={badIntensityIndex}
-                          onChange={(e) => setBadIntensityIndex(Number(e.target.value))}
-                        />
-                      </label>
-                    </div>
                   </div>
                 )}
 
@@ -1598,6 +1519,7 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
 
   const [tooltip, setTooltip] = useState<{ candle: Candle; x: number; y: number } | null>(null);
   const [selectedCandleKey, setSelectedCandleKey] = useState<number | null>(null);
+  const [chartView, setChartView] = useState<"candles" | "line">("candles");
   const [autoFollow, setAutoFollow] = useState(true);
   // Viewport state: how many candles are visible + how far we are panned from the latest candle.
   const [viewport, setViewport] = useState({ visibleCount: 90, offsetFromRight: 0 });
@@ -2029,6 +1951,21 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
     }
   }, [data, selectedCandleKey]);
 
+
+  const linePoints = useMemo(() => {
+    return visibleData.map((d, i) => ({
+      key: d.t,
+      x: pxX(i),
+      y: yToPx(d.c),
+      candle: d,
+    }));
+  }, [visibleData, min, max, step]);
+
+  const linePath = useMemo(() => {
+    if (!linePoints.length) return "";
+    return linePoints.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  }, [linePoints]);
+
   const formatTxLabel = (label: string, deltaUC: number) => {
     const match = label.match(/^(.*)\s\(([^)]+)\)$/);
     if (match) return { title: match[1], action: match[2] };
@@ -2062,6 +1999,14 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
           </button>
         </div>
         <div className={styles.chartMeta}>
+          <div className={styles.viewToggle} aria-label="Chart view">
+            <button className={`${styles.viewToggleBtn} ${chartView === "candles" ? styles.viewToggleBtnOn : ""}`} type="button" onClick={() => setChartView("candles")} aria-pressed={chartView === "candles"}>
+              Candlesticks
+            </button>
+            <button className={`${styles.viewToggleBtn} ${chartView === "line" ? styles.viewToggleBtnOn : ""}`} type="button" onClick={() => setChartView("line")} aria-pressed={chartView === "line"}>
+              Line
+            </button>
+          </div>
           <div className={styles.viewportBadge}>{visibleData.length} visible</div>
           <label className={styles.autoFollow}>
             <input
@@ -2108,6 +2053,41 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
               );
             })}
 
+            {chartView === "line" ? (
+              <g>
+                {linePath ? (
+                  <path d={linePath} fill="none" stroke="rgba(245,245,245,0.88)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                ) : null}
+                {linePoints.map((point) => {
+                  const isSelected = selectedCandleKey === point.key;
+                  return (
+                    <g key={`line-${point.key}`}>
+                      {isSelected ? (
+                        <rect
+                          x={point.x - Math.max(bodyW, step * 0.72) / 2}
+                          y={padding.top}
+                          width={Math.max(bodyW, step * 0.72)}
+                          height={h - padding.top - padding.bottom}
+                          rx={10}
+                          fill="rgba(45,212,191,0.08)"
+                          stroke="rgba(45,212,191,0.55)"
+                          strokeWidth={1.5}
+                        />
+                      ) : null}
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={isSelected ? 6.5 : Math.max(3.5, Math.min(5, step * 0.14))}
+                        fill={isSelected ? "rgba(45,212,191,0.95)" : "rgba(245,245,245,0.85)"}
+                        stroke={isSelected ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.55)"}
+                        strokeWidth={isSelected ? 2.2 : 1.4}
+                      />
+                    </g>
+                  );
+                })}
+              </g>
+            ) : (
+              <>
             {/* candles */}
             {visibleData.map((d, i) => {
               const x = pxX(i);
@@ -2154,6 +2134,8 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
                 </g>
               );
             })}
+              </>
+            )}
 
             {activeX !== null && activeY !== null ? (
               <g pointerEvents="none">
