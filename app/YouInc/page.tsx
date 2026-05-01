@@ -1208,7 +1208,7 @@ function submitBuyActivity() {
                         >
                           Failed <span className={styles.delta}>-200 UC</span>
                         </button>
-                        <button className={styles.iconBtn} onClick={() => removeItem("goals", g.id)} title="Remove" type="button" aria-label="Remove goal">
+                        <button className={styles.iconBtnSmall} onClick={() => removeItem("goals", g.id)} title="Remove" type="button" aria-label="Remove goal">
                           <TrashIcon />
                         </button>
                       </div>
@@ -1250,7 +1250,7 @@ function submitBuyActivity() {
                           >
                             Sold <span className={styles.delta}>-{h.soldUC ?? 50} UC</span>
                           </button>
-                          <button className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove" type="button" aria-label="Remove good habit">
+                          <button className={styles.iconBtnSmall} onClick={() => removeItem("good", h.id)} title="Remove" type="button" aria-label="Remove good habit">
                             <TrashIcon />
                           </button>
                         </div>
@@ -1324,7 +1324,7 @@ function submitBuyActivity() {
                           >
                             Sold <span className={styles.delta}>-{b.soldUC ?? 50} UC</span>
                           </button>
-                          <button className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove" type="button" aria-label="Remove bad habit">
+                          <button className={styles.iconBtnSmall} onClick={() => removeItem("bad", b.id)} title="Remove" type="button" aria-label="Remove bad habit">
                             <TrashIcon />
                           </button>
                         </div>
@@ -1418,7 +1418,7 @@ function submitBuyActivity() {
                           >
                             Reset charges
                           </button>
-                          <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button" aria-label="Remove addiction">
+                          <button className={styles.iconBtnSmall} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button" aria-label="Remove addiction">
                             <TrashIcon />
                           </button>
                         </div>

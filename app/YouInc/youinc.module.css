@@ -1751,3 +1751,28 @@ select.input {
     flex: 1;
   }
 }
+
+
+.iconBtnSmall {
+  width: 34px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  border-radius: 10px;
+
+  color: rgba(255, 255, 255, 0.6);
+  background: #111111;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+
+  transition: 0.15s ease;
+}
+
+.iconBtnSmall:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.95);
+}
