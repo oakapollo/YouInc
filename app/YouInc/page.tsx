@@ -47,6 +47,22 @@ function getIntensityByIndex(index: number): IntensityOption {
   return INTENSITY_OPTIONS[Math.max(0, Math.min(INTENSITY_OPTIONS.length - 1, index))] ?? INTENSITY_OPTIONS[DEFAULT_INTENSITY_INDEX];
 }
 
+function getIntensityIndexFromValues(holdUC?: number, soldUC?: number) {
+  const index = INTENSITY_OPTIONS.findIndex((option) => option.hold === (holdUC ?? 100) && option.sold === (soldUC ?? 50));
+  return index >= 0 ? index : DEFAULT_INTENSITY_INDEX;
+}
+
+function TrashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M9 3h6l1 2h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 5h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M7 8l1 12h8l1-12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 type Goal = { id: string; title: string; expiry: string; createdAt: number };
 
 type GoodHabit = {
@@ -63,7 +79,7 @@ type GoodHabit = {
 type BadHabit = {
   id: string;
   title: string;
-  expiryMode: "date" | "permanent";
+  expiryMode?: "date" | "permanent";
   expiryDate?: string;
   notes?: string;
   holdUC?: number;
@@ -438,10 +454,9 @@ export default function YouIncPage() {
   const [goodIntensityIndex, setGoodIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
 
   const [badTitle, setBadTitle] = useState("");
-  const [badExpiryMode, setBadExpiryMode] = useState<"date" | "permanent">("date");
-  const [badExpiryDate, setBadExpiryDate] = useState(todayISO());
   const [badNotes, setBadNotes] = useState("");
   const [badIntensityIndex, setBadIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
+  const [intensityEditor, setIntensityEditor] = useState<{ kind: "good" | "bad"; id: string; index: number } | null>(null);
 
   const [addictionTitle, setAddictionTitle] = useState("");
 
@@ -828,8 +843,6 @@ function submitBuyActivity() {
       setGoodIntensityIndex(DEFAULT_INTENSITY_INDEX);
     } else if (nextTab === "bad") {
       setBadTitle("");
-      setBadExpiryMode("date");
-      setBadExpiryDate(todayISO());
       setBadNotes("");
       setBadIntensityIndex(DEFAULT_INTENSITY_INDEX);
     } else {
@@ -896,9 +909,7 @@ function submitBuyActivity() {
       return true;
     }
     if (tab === "bad") {
-      if (badTitle.trim().length === 0) return false;
-      if (badExpiryMode === "date" && !badExpiryDate) return false;
-      return true;
+      return badTitle.trim().length > 0;
     }
     return addictionTitle.trim().length > 0;
   }
@@ -974,8 +985,6 @@ function submitBuyActivity() {
       const item: BadHabit = {
         id: uid(),
         title: badTitle.trim(),
-        expiryMode: badExpiryMode,
-        expiryDate: badExpiryMode === "date" ? badExpiryDate : undefined,
         notes: badNotes.trim(),
         holdUC: badIntensity.hold,
         soldUC: badIntensity.sold,
@@ -998,6 +1007,39 @@ function submitBuyActivity() {
     if (kind === "good") updateStoreAndSave((s) => ({ ...s, goodHabits: s.goodHabits.filter((x) => x.id !== id) }));
     if (kind === "bad") updateStoreAndSave((s) => ({ ...s, badHabits: s.badHabits.filter((x) => x.id !== id) }));
     if (kind === "addictions") updateStoreAndSave((s) => ({ ...s, addictions: s.addictions.filter((x) => x.id !== id) }));
+  }
+
+  function openIntensityEditor(kind: "good" | "bad", id: string, holdUC?: number, soldUC?: number) {
+    setIntensityEditor((current) =>
+      current?.kind === kind && current.id === id
+        ? null
+        : { kind, id, index: getIntensityIndexFromValues(holdUC, soldUC) }
+    );
+  }
+
+  function saveIntensityEditor() {
+    if (!intensityEditor) return;
+    const next = getIntensityByIndex(intensityEditor.index);
+
+    if (intensityEditor.kind === "good") {
+      updateStoreAndSave((s) => ({
+        ...s,
+        goodHabits: s.goodHabits.map((habit) =>
+          habit.id === intensityEditor.id ? { ...habit, holdUC: next.hold, soldUC: next.sold } : habit
+        ),
+      }));
+    }
+
+    if (intensityEditor.kind === "bad") {
+      updateStoreAndSave((s) => ({
+        ...s,
+        badHabits: s.badHabits.map((habit) =>
+          habit.id === intensityEditor.id ? { ...habit, holdUC: next.hold, soldUC: next.sold } : habit
+        ),
+      }));
+    }
+
+    setIntensityEditor(null);
   }
 
   function applyAddictionSold(addiction: Addiction) {
@@ -1166,8 +1208,8 @@ function submitBuyActivity() {
                         >
                           Failed <span className={styles.delta}>-200 UC</span>
                         </button>
-                        <button className={styles.iconBtn} onClick={() => removeItem("goals", g.id)} title="Remove" type="button">
-                          ✕
+                        <button className={styles.iconBtn} onClick={() => removeItem("goals", g.id)} title="Remove" type="button" aria-label="Remove goal">
+                          <TrashIcon />
                         </button>
                       </div>
                     </div>
@@ -1192,24 +1234,60 @@ function submitBuyActivity() {
                           {h.notes ? <span className={styles.metaNote}>{h.notes}</span> : null}
                         </div>
                       </div>
-                      <div className={styles.cardActions}>
+                      <div className={styles.cardControlStack}>
+                        <div className={styles.cardActions}>
+                          <button
+                            className={styles.actionPrimary}
+                            onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +(h.holdUC ?? 100))}
+                            type="button"
+                          >
+                            Hold <span className={styles.delta}>+{getPreviewDelta("good", h.holdUC ?? 100)} UC</span>
+                          </button>
+                          <button
+                            className={styles.actionDanger}
+                            onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -(h.soldUC ?? 50))}
+                            type="button"
+                          >
+                            Sold <span className={styles.delta}>-{h.soldUC ?? 50} UC</span>
+                          </button>
+                          <button className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove" type="button" aria-label="Remove good habit">
+                            <TrashIcon />
+                          </button>
+                        </div>
+
                         <button
-                          className={styles.actionPrimary}
-                          onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +(h.holdUC ?? 100))}
+                          className={styles.adjustIntensityBtn}
+                          onClick={() => openIntensityEditor("good", h.id, h.holdUC, h.soldUC)}
                           type="button"
                         >
-                          Hold <span className={styles.delta}>+{getPreviewDelta("good", h.holdUC ?? 100)} UC</span>
+                          Adjust intensity
                         </button>
-                        <button
-                          className={styles.actionDanger}
-                          onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -(h.soldUC ?? 50))}
-                          type="button"
-                        >
-                          Sold <span className={styles.delta}>-{h.soldUC ?? 50} UC</span>
-                        </button>
-                        <button className={styles.iconBtn} onClick={() => removeItem("good", h.id)} title="Remove" type="button">
-                          ✕
-                        </button>
+
+                        {intensityEditor?.kind === "good" && intensityEditor.id === h.id ? (
+                          <div className={styles.intensityDropdown}>
+                            <div className={styles.previewActions}>
+                              <span className={styles.previewHold}>Hold +{getIntensityByIndex(intensityEditor.index).hold}</span>
+                              <span className={styles.previewSold}>Sold -{getIntensityByIndex(intensityEditor.index).sold}</span>
+                            </div>
+                            <input
+                              className={styles.intensitySlider}
+                              type="range"
+                              min="0"
+                              max={INTENSITY_OPTIONS.length - 1}
+                              step="1"
+                              value={intensityEditor.index}
+                              onChange={(e) => setIntensityEditor({ ...intensityEditor, index: Number(e.target.value) })}
+                            />
+                            <div className={styles.intensitySaveRow}>
+                              <button className={styles.ghostBtn} onClick={() => setIntensityEditor(null)} type="button">
+                                Cancel
+                              </button>
+                              <button className={styles.primaryBtn} onClick={saveIntensityEditor} type="button">
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ))
@@ -1220,35 +1298,70 @@ function submitBuyActivity() {
             <div className={styles.section}>
               <div className={styles.list}>
                 {store.badHabits.length === 0 ? (
-                  <EmptyState text="No bad habits yet. Add one and set an expiry date (or permanent)." />
+                  <EmptyState text="No bad habits yet. Add one and choose its intensity." />
                 ) : (
                   store.badHabits.map((b) => (
                     <div key={b.id} className={styles.card}>
                       <div className={styles.cardMain}>
                         <div className={styles.cardTitle}>{b.title}</div>
                         <div className={styles.metaRow}>
-                          <span className={styles.metaPill}>{b.expiryMode === "permanent" ? "Permanent" : `Expiry: ${b.expiryDate}`}</span>
                           {b.notes ? <span className={styles.metaNote}>{b.notes}</span> : null}
                         </div>
                       </div>
-                      <div className={styles.cardActions}>
+                      <div className={styles.cardControlStack}>
+                        <div className={styles.cardActions}>
+                          <button
+                            className={styles.actionPrimary}
+                            onClick={() => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +(b.holdUC ?? 100))}
+                            type="button"
+                          >
+                            Hold <span className={styles.delta}>+{getPreviewDelta("bad", b.holdUC ?? 100)} UC</span>
+                          </button>
+                          <button
+                            className={styles.actionDanger}
+                            onClick={() => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -(b.soldUC ?? 50))}
+                            type="button"
+                          >
+                            Sold <span className={styles.delta}>-{b.soldUC ?? 50} UC</span>
+                          </button>
+                          <button className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove" type="button" aria-label="Remove bad habit">
+                            <TrashIcon />
+                          </button>
+                        </div>
+
                         <button
-                          className={styles.actionPrimary}
-                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +(b.holdUC ?? 100))}
+                          className={styles.adjustIntensityBtn}
+                          onClick={() => openIntensityEditor("bad", b.id, b.holdUC, b.soldUC)}
                           type="button"
                         >
-                          Hold <span className={styles.delta}>+{getPreviewDelta("bad", b.holdUC ?? 100)} UC</span>
+                          Adjust intensity
                         </button>
-                        <button
-                          className={styles.actionDanger}
-                          onClick={() => applyDelta("bad", `${b.title} (Bad habit · Sold)`, -(b.soldUC ?? 50))}
-                          type="button"
-                        >
-                          Sold <span className={styles.delta}>-{b.soldUC ?? 50} UC</span>
-                        </button>
-                        <button className={styles.iconBtn} onClick={() => removeItem("bad", b.id)} title="Remove" type="button">
-                          ✕
-                        </button>
+
+                        {intensityEditor?.kind === "bad" && intensityEditor.id === b.id ? (
+                          <div className={styles.intensityDropdown}>
+                            <div className={styles.previewActions}>
+                              <span className={styles.previewHold}>Hold +{getIntensityByIndex(intensityEditor.index).hold}</span>
+                              <span className={styles.previewSold}>Sold -{getIntensityByIndex(intensityEditor.index).sold}</span>
+                            </div>
+                            <input
+                              className={styles.intensitySlider}
+                              type="range"
+                              min="0"
+                              max={INTENSITY_OPTIONS.length - 1}
+                              step="1"
+                              value={intensityEditor.index}
+                              onChange={(e) => setIntensityEditor({ ...intensityEditor, index: Number(e.target.value) })}
+                            />
+                            <div className={styles.intensitySaveRow}>
+                              <button className={styles.ghostBtn} onClick={() => setIntensityEditor(null)} type="button">
+                                Cancel
+                              </button>
+                              <button className={styles.primaryBtn} onClick={saveIntensityEditor} type="button">
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   ))
@@ -1305,8 +1418,8 @@ function submitBuyActivity() {
                           >
                             Reset charges
                           </button>
-                          <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button">
-                            ✕
+                          <button className={styles.iconBtn} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button" aria-label="Remove addiction">
+                            <TrashIcon />
                           </button>
                         </div>
                       </div>
@@ -1510,28 +1623,6 @@ function submitBuyActivity() {
                       Bad Habit
                       <input className={styles.input} value={badTitle} onChange={(e) => setBadTitle(e.target.value)} autoFocus />
                     </label>
-
-                    <div className={styles.row2}>
-                      <label className={styles.label}>
-                        Expiry
-                        <select className={styles.input} value={badExpiryMode} onChange={(e) => setBadExpiryMode(e.target.value as any)}>
-                          <option value="date">Pick date</option>
-                          <option value="permanent">Permanent</option>
-                        </select>
-                      </label>
-
-                      {badExpiryMode === "date" ? (
-                        <label className={styles.label}>
-                          Expiry date
-                          <input className={styles.input} type="date" value={badExpiryDate} onChange={(e) => setBadExpiryDate(e.target.value)} />
-                        </label>
-                      ) : (
-                        <div className={styles.helperBox}>
-                          <div className={styles.helperTitle}>Permanent</div>
-                          <div className={styles.helperText}>No expiry date. You’re tracking it long-term.</div>
-                        </div>
-                      )}
-                    </div>
 
                     <label className={styles.label}>
                       Notes
