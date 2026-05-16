@@ -457,6 +457,11 @@ export default function YouIncPage() {
   const [badNotes, setBadNotes] = useState("");
   const [badIntensityIndex, setBadIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
   const [intensityEditor, setIntensityEditor] = useState<{ kind: "good" | "bad"; id: string; index: number } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<
+    | { type: "switchAccount" }
+    | { type: "deleteItem"; kind: TabKey; id: string; title: string }
+    | null
+  >(null);
 
   const [addictionTitle, setAddictionTitle] = useState("");
 
@@ -986,11 +991,31 @@ function submitBuyActivity() {
     resetFormForTab("addictions");
   }
 
+  function requestRemoveItem(kind: TabKey, id: string, title: string) {
+    setConfirmAction({ type: "deleteItem", kind, id, title });
+  }
+
   function removeItem(kind: TabKey, id: string) {
     if (kind === "goals") updateStoreAndSave((s) => ({ ...s, goals: s.goals.filter((x) => x.id !== id) }));
     if (kind === "good") updateStoreAndSave((s) => ({ ...s, goodHabits: s.goodHabits.filter((x) => x.id !== id) }));
     if (kind === "bad") updateStoreAndSave((s) => ({ ...s, badHabits: s.badHabits.filter((x) => x.id !== id) }));
     if (kind === "addictions") updateStoreAndSave((s) => ({ ...s, addictions: s.addictions.filter((x) => x.id !== id) }));
+  }
+
+  function confirmPendingAction() {
+    if (!confirmAction) return;
+
+    if (confirmAction.type === "switchAccount") {
+      router.push("/logout");
+      return;
+    }
+
+    removeItem(confirmAction.kind, confirmAction.id);
+    setConfirmAction(null);
+  }
+
+  function cancelPendingAction() {
+    setConfirmAction(null);
   }
 
   function openIntensityEditor(kind: "good" | "bad", id: string, holdUC?: number, soldUC?: number) {
@@ -1058,6 +1083,34 @@ function submitBuyActivity() {
           </div>
         ) : null}
 
+        {confirmAction ? (
+          <div className={styles.confirmOverlay} role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <div className={styles.confirmBox}>
+              <div className={styles.confirmKicker}>Confirm action</div>
+              <h2 id="confirm-title" className={styles.confirmTitle}>
+                {confirmAction.type === "switchAccount" ? "Switch account?" : "Delete this entry?"}
+              </h2>
+              <p className={styles.confirmText}>
+                {confirmAction.type === "switchAccount"
+                  ? "You’ll leave this account and go back to login."
+                  : `This will remove “${confirmAction.title}” from ${SECTION_TITLES[confirmAction.kind].toLowerCase()}.`}
+              </p>
+              <div className={styles.confirmActions}>
+                <button className={styles.ghostBtn} onClick={cancelPendingAction} type="button">
+                  Cancel
+                </button>
+                <button
+                  className={confirmAction.type === "deleteItem" ? styles.confirmDangerBtn : styles.primaryBtn}
+                  onClick={confirmPendingAction}
+                  type="button"
+                >
+                  {confirmAction.type === "switchAccount" ? "Switch account" : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <header className={styles.header}>
           <div className={styles.brand}>
             <div className={styles.logo} />
@@ -1069,9 +1122,13 @@ function submitBuyActivity() {
           </div>
 
           <div className={styles.headerActions}>
-  <a className={styles.secondaryBtn} href="/logout">
+  <button
+    className={styles.secondaryBtn}
+    onClick={() => setConfirmAction({ type: "switchAccount" })}
+    type="button"
+  >
     Switch account
-  </a>
+  </button>
 </div>
         </header>
 
@@ -1182,7 +1239,7 @@ function submitBuyActivity() {
                         >
                           Failed <span className={styles.delta}>-200 UC</span>
                         </button>
-                        <button className={styles.iconBtnSmall} onClick={() => removeItem("goals", g.id)} title="Remove" type="button" aria-label="Remove goal">
+                        <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("goals", g.id, g.title)} title="Remove" type="button" aria-label="Remove goal">
                           <TrashIcon />
                         </button>
                       </div>
@@ -1224,7 +1281,7 @@ function submitBuyActivity() {
                           >
                             Sold <span className={styles.delta}>-{h.soldUC ?? 50} UC</span>
                           </button>
-                          <button className={styles.iconBtnSmall} onClick={() => removeItem("good", h.id)} title="Remove" type="button" aria-label="Remove good habit">
+                          <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("good", h.id, h.title)} title="Remove" type="button" aria-label="Remove good habit">
                             <TrashIcon />
                           </button>
                         </div>
@@ -1298,7 +1355,7 @@ function submitBuyActivity() {
                           >
                             Sold <span className={styles.delta}>-{b.soldUC ?? 50} UC</span>
                           </button>
-                          <button className={styles.iconBtnSmall} onClick={() => removeItem("bad", b.id)} title="Remove" type="button" aria-label="Remove bad habit">
+                          <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("bad", b.id, b.title)} title="Remove" type="button" aria-label="Remove bad habit">
                             <TrashIcon />
                           </button>
                         </div>
@@ -1392,7 +1449,7 @@ function submitBuyActivity() {
                           >
                             Reset charges
                           </button>
-                          <button className={styles.iconBtnSmall} onClick={() => removeItem("addictions", a.id)} title="Remove" type="button" aria-label="Remove addiction">
+                          <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("addictions", a.id, a.title)} title="Remove" type="button" aria-label="Remove addiction">
                             <TrashIcon />
                           </button>
                         </div>
