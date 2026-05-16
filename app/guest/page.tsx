@@ -7,7 +7,7 @@ import styles from "../YouInc/youinc.module.css";
 type TabKey = "goals" | "good" | "bad" | "addictions";
 type Timeframe = "1d" | "3d" | "1w" | "1m";
 type Tx = { id: string; ts: number; deltaUC: number; label: string };
-type DemoItem = { id: string; title: string; notes: string; createdAt: number };
+type DemoItem = { id: string; title: string; notes: string; createdAt: number; holdUC: number; soldUC: number };
 type Candle = { t: number; o: number; h: number; l: number; c: number; tx: Tx[] };
 
 type Step =
@@ -37,6 +37,13 @@ type Step =
   | "final";
 
 const SECTION_ORDER: TabKey[] = ["goals", "good", "bad", "addictions"];
+const INTENSITY_LEVELS = [
+  { hold: 10, sold: -10 },
+  { hold: 20, sold: -10 },
+  { hold: 40, sold: -20 },
+  { hold: 80, sold: -40 },
+  { hold: 100, sold: -50 },
+];
 const SECTION_TITLES: Record<TabKey, string> = {
   goals: "Goals",
   good: "Good Habits",
@@ -133,6 +140,7 @@ export default function GuestPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalKind, setModalKind] = useState<TabKey>("good");
   const [entryTitle, setEntryTitle] = useState("Log my habits");
+  const [modalIntensityIndex, setModalIntensityIndex] = useState(4);
   const [items, setItems] = useState<Record<TabKey, DemoItem[]>>({ goals: [], good: [], bad: [], addictions: [] });
   const [marketCapUC, setMarketCapUC] = useState(10000);
   const [tx, setTx] = useState<Tx[]>([]);
@@ -224,15 +232,19 @@ export default function GuestPage() {
 
     if (kind === "good") {
       setEntryTitle("Log my habits");
+      setModalIntensityIndex(4);
       setStep("modal-add");
     } else if (kind === "bad") {
       setEntryTitle("Bad Habit");
+      setModalIntensityIndex(4);
       setStep("bad-modal-add");
     } else if (kind === "goals") {
       setEntryTitle("Start Tracking my Progress");
+      setModalIntensityIndex(4);
       setStep("goal-modal-add");
     } else {
       setEntryTitle("Addiction Trigger");
+      setModalIntensityIndex(4);
     }
 
     setIsModalOpen(true);
@@ -240,11 +252,14 @@ export default function GuestPage() {
 
   function addEntry() {
     const title = entryTitle.trim() || SECTION_TITLES[modalKind];
+    const intensity = INTENSITY_LEVELS[modalIntensityIndex] ?? INTENSITY_LEVELS[4];
     const item: DemoItem = {
       id: uid(),
       title,
       notes: modalKind === "goals" ? "Your first big win" : modalKind === "bad" ? "Honesty beats hiding" : "Demo entry",
       createdAt: Date.now(),
+      holdUC: modalKind === "goals" ? 400 : intensity.hold,
+      soldUC: modalKind === "goals" ? -200 : intensity.sold,
     };
 
     setItems((prev) => ({ ...prev, [modalKind]: [item] }));
@@ -272,14 +287,14 @@ export default function GuestPage() {
   }
 
   function holdGood(item: DemoItem) {
-    applyDelta(`${item.title} · Good habit`, 100);
+    applyDelta(`${item.title} · Good habit`, item.holdUC);
     setTf("1d");
     setTfTouched(false);
     setStep("chart-day");
   }
 
   function soldBad(item: DemoItem) {
-    applyDelta(`${item.title} · Bad habit`, -50);
+    applyDelta(`${item.title} · Bad habit`, item.soldUC);
     setStep("goals-tab");
   }
 
@@ -344,10 +359,10 @@ export default function GuestPage() {
     if (step === "tap-candle" && visibleZone !== "chart") return "Scroll to the chart and tap the highlighted point.";
     if (step === "details" && visibleZone !== "details") return "Scroll to the Progress Breakdown below the chart.";
     if (step === "goal-details" && visibleZone !== "details") return "Taking you to Progress Breakdown.";
-    if (step === "bad-tab" || step === "bad-add-entry") return "Go back to the tabs and open Bad Habits.";
-    if (step === "bad-reach") return "Scroll to the tabs, then switch to Bad Habits.";
+    if (step === "bad-tab" || step === "bad-add-entry") return "Go back to the top cards and open Bad Habits.";
+    if (step === "bad-reach") return "Scroll to the top cards, then switch to Bad Habits.";
     if (step === "bad-sold" && visibleZone !== "list") return "Scroll to your Bad Habits list, then tap Sold.";
-    if (step === "goals-tab" || step === "goal-add-entry") return "Go back to the tabs and open Goals.";
+    if (step === "goals-tab" || step === "goal-add-entry") return "Go back to the top cards and open Goals.";
     if (step === "goal-hold" && visibleZone !== "list") return "Scroll to your Goals list, then complete your first goal.";
     if (step === "goal-chart" && visibleZone !== "chart") return "Scroll to the chart, then tap the highlighted point.";
     return null;
@@ -392,42 +407,35 @@ export default function GuestPage() {
             <div className={styles.heroTitle}>Start where you are. Log what you do. Watch the signal change.</div>
             <div className={styles.heroText}>This is a guided first run. Treat it like your own account: add habits, log honest wins and slips, then decide whether you want to keep your chart going.</div>
           </div>
-          <div className={styles.heroStats}>
-            <div className={`${styles.heroStat} ${styles.heroStat_positive}`}><span>Market Cap</span><strong>{marketCapUC.toLocaleString()} UC</strong></div>
-            <div className={styles.heroStat}><span>Price</span><strong>{formatMoney(price)}</strong></div>
-            <div className={styles.heroStat}><span>Entries</span><strong>{tx.length}</strong></div>
-            <div className={`${styles.heroStat} ${styles.heroStat_warning}`}><span>Mode</span><strong>First run</strong></div>
+          <div ref={tabsRef} className={styles.heroStats} aria-label="Choose what you want to add">
+            {SECTION_ORDER.map((key) => {
+              const pulse =
+                (key === "good" && step === "good-tab") ||
+                (key === "bad" && (step === "bad-tab" || step === "bad-reach")) ||
+                (key === "goals" && step === "goals-tab");
+
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`${styles.heroStat} ${tab === key ? styles.heroStatActive : ""} ${pulse ? styles.guestPulse : ""}`}
+                  onClick={() => handleTabClick(key)}
+                  aria-pressed={tab === key}
+                >
+                  <span>{key === "good" ? "Good" : key === "bad" ? "Bad" : SECTION_TITLES[key]}</span>
+                  <strong>{items[key].length}</strong>
+                  <small>{tab === key ? "Selected" : "Tap to select"}</small>
+                </button>
+              );
+            })}
           </div>
         </section>
 
         <div className={styles.guestAddEntryRow}>
-          <button className={`${styles.addBtn} ${activeAddHighlight()}`} onClick={() => openEntry(tab)} type="button">
+          <button className={`${styles.addBtn} ${activeAddHighlight()}`} onClick={() => openEntry(tab)} type="button" aria-label={`Add entry to ${SECTION_TITLES[tab]}`}>
             <span className={styles.addPlus}>＋</span>
             Add entry
           </button>
-        </div>
-
-        <div ref={tabsRef} className={styles.tabs} role="tablist" aria-label="Guest onboarding sections">
-          {SECTION_ORDER.map((key) => {
-            const pulse =
-              (key === "good" && step === "good-tab") ||
-              (key === "bad" && (step === "bad-tab" || step === "bad-reach")) ||
-              (key === "goals" && step === "goals-tab");
-
-            return (
-              <button
-                key={key}
-                type="button"
-                role="tab"
-                aria-selected={tab === key}
-                className={`${styles.tab} ${tab === key ? styles.tabActive : ""} ${pulse ? styles.guestPulse : ""}`}
-                onClick={() => handleTabClick(key)}
-              >
-                <span>{SECTION_TITLES[key]}</span>
-                <small>{SECTION_SUBTITLES[key]}</small>
-              </button>
-            );
-          })}
         </div>
 
         <section ref={listRef} className={styles.panel}>
@@ -603,11 +611,45 @@ export default function GuestPage() {
                     <label className={styles.label}>Type<input className={styles.input} value={SECTION_TITLES[modalKind]} readOnly /></label>
                     <label className={styles.label}>Notes<input className={styles.input} value={modalKind === "bad" ? "honesty beats hiding" : modalKind === "goals" ? "make progress visible" : "tracking habits is also a habit"} readOnly /></label>
                   </div>
+
+                  {(modalKind === "good" || modalKind === "bad") ? (
+                    <div className={styles.intensityBox}>
+                      <div className={styles.helperTitle}>Adjust intensity</div>
+                      <div className={styles.helperText}>
+                        Smaller habits do not need the same reward as massive habits. Set the reward and penalty to what feels fair.
+                      </div>
+                      <div className={styles.previewActions}>
+                        <span className={styles.previewHold}>Hold <span className={styles.delta}>+{INTENSITY_LEVELS[modalIntensityIndex].hold} UC</span></span>
+                        <span className={styles.previewSold}>Sold <span className={styles.delta}>{INTENSITY_LEVELS[modalIntensityIndex].sold} UC</span></span>
+                      </div>
+                      <label className={styles.intensityLabel}>
+                        Reward level: +{INTENSITY_LEVELS[modalIntensityIndex].hold} / {INTENSITY_LEVELS[modalIntensityIndex].sold} UC
+                        <input
+                          className={`${styles.intensitySlider} ${step === "modal-add" && modalKind === "good" && modalIntensityIndex !== 1 ? styles.guestPulse : ""}`}
+                          type="range"
+                          min="0"
+                          max={INTENSITY_LEVELS.length - 1}
+                          step="1"
+                          value={modalIntensityIndex}
+                          onChange={(e) => setModalIntensityIndex(Number(e.target.value))}
+                        />
+                      </label>
+                    </div>
+                  ) : null}
                 </div>
               </div>
               <div className={styles.modalFooter}>
                 <button className={styles.ghostBtn} onClick={() => setIsModalOpen(false)} type="button">Cancel</button>
-                <button className={`${styles.primaryBtn} ${(step === "modal-add" || step === "bad-modal-add" || step === "goal-modal-add") ? styles.guestPulse : ""}`} onClick={addEntry} disabled={!entryTitle.trim()} type="button">Add</button>
+                <button
+                  className={`${styles.primaryBtn} ${(
+                    (step === "modal-add" && modalKind === "good" && modalIntensityIndex === 1) ||
+                    step === "bad-modal-add" ||
+                    step === "goal-modal-add"
+                  ) ? styles.guestPulse : ""}`}
+                  onClick={addEntry}
+                  disabled={!entryTitle.trim()}
+                  type="button"
+                >Add</button>
               </div>
             </div>
           </div>
@@ -623,9 +665,10 @@ export default function GuestPage() {
 }
 
 function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "details") {
-  if (step === "modal-add" || step === "bad-modal-add" || step === "goal-modal-add" || step === "bad-popup" || step === "final") return null;
-  if (step === "good-tab") return { title: "Your first signal starts here", text: "Tap Good Habits. Start with one small action you want to repeat." };
+  if (step === "bad-modal-add" || step === "goal-modal-add" || step === "bad-popup" || step === "final") return null;
+  if (step === "good-tab") return { title: "Your first signal starts here", text: "Tap the Good card. Start with one small action you want to repeat." };
   if (step === "add-entry") return { title: "Name the habit", text: "Tap Add entry. I already filled it in so you can feel the flow, not fight the form." };
+  if (step === "modal-add") return { title: "Set the intensity", text: "Some habits are easier or smaller. Drag the reward level to +20 / -10 UC, then tap Add." };
   if (step === "hold") return { title: "Log the win", text: "Scroll to the habit and tap Hold. That tells your chart you showed up today." };
   if (step === "chart-day" && visibleZone !== "chart") return { title: "Now watch it move", text: "Scroll to the chart. Your action has already changed the price." };
   if (step === "tf-info" && visibleZone !== "chart") return { title: "Try the time views", text: "Scroll to the chart controls. 1D, 3D, 1W and 1M show different progress windows." };
@@ -633,11 +676,11 @@ function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "deta
   if (step === "buy-complete") return { title: "Do it, then log it", text: "The task is already filled in. Complete it and watch the chart respond." };
   if (step === "tap-candle") return { title: "Pick the latest point", text: "👇 Tap the highlighted point on the chart. The lines show what you selected." };
   if (step === "details" && visibleZone !== "details") return { title: "Read the result", text: "Scroll to the breakdown. You’ll see the price and the change from the previous period." };
-  if (step === "bad-tab") return { title: "Now add honesty", text: "Tap Bad Habits. Progress is not only wins — it is also telling the truth." };
+  if (step === "bad-tab") return { title: "Now add honesty", text: "Tap the Bad card. Progress is not only wins — it is also telling the truth." };
   if (step === "bad-add-entry") return { title: "Track the pattern", text: "Tap Add entry. I filled in a simple bad habit so you can log the slip honestly." };
-  if (step === "bad-reach") return { title: "Open Bad Habits", text: "Tap the Bad Habits tab again to continue." };
+  if (step === "bad-reach") return { title: "Open Bad Habits", text: "Tap the Bad card again to continue." };
   if (step === "bad-sold") return { title: "Log the slip", text: "Tap Sold -50 UC. No drama. Just honest feedback." };
-  if (step === "goals-tab") return { title: "Now finish with a real boost", text: "Tap Goals. Goals are the big moves that push your chart higher." };
+  if (step === "goals-tab") return { title: "Now finish with a real boost", text: "Tap the Goals card. Goals are the big moves that push your chart higher." };
   if (step === "goal-add-entry") return { title: "Create the goal", text: "Tap Add entry. I filled in your first goal for you." };
   if (step === "goal-hold") return { title: "Complete the goal", text: "Tap Complete +400 UC. This one should feel bigger because goals are supposed to matter." };
   if (step === "goal-chart" && visibleZone !== "chart") return { title: "Look at the jump", text: "Scroll to the chart, then tap the highlighted point 👇." };
@@ -703,16 +746,16 @@ function DemoCard({
       </div>
       <div className={styles.cardActions}>
         {tab === "goals" ? (
-          <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoalHold} type="button">Complete <span className={styles.delta}>+400 UC</span></button>
+          <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoalHold} type="button">Complete <span className={styles.delta}>+{item.holdUC} UC</span></button>
         ) : tab === "bad" ? (
           <>
-            <button className={styles.actionPrimary} type="button">Hold <span className={styles.delta}>+100 UC</span></button>
-            <button className={`${styles.actionDanger} ${soldHighlight ? styles.guestPulse : ""}`} onClick={onBadSold} type="button">Sold <span className={styles.delta}>-50 UC</span></button>
+            <button className={styles.actionPrimary} type="button">Hold <span className={styles.delta}>+{item.holdUC} UC</span></button>
+            <button className={`${styles.actionDanger} ${soldHighlight ? styles.guestPulse : ""}`} onClick={onBadSold} type="button">Sold <span className={styles.delta}>{item.soldUC} UC</span></button>
           </>
         ) : (
           <>
-            <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoodHold} type="button">Hold <span className={styles.delta}>+100 UC</span></button>
-            <button className={styles.actionDanger} type="button">Sold <span className={styles.delta}>-50 UC</span></button>
+            <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoodHold} type="button">Hold <span className={styles.delta}>+{item.holdUC} UC</span></button>
+            <button className={styles.actionDanger} type="button">Sold <span className={styles.delta}>{item.soldUC} UC</span></button>
           </>
         )}
       </div>
