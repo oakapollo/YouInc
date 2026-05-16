@@ -655,7 +655,7 @@ export default function GuestPage() {
           </div>
         ) : null}
 
-        {coach ? <TutorialCoach title={coach.title} text={coach.text} /> : null}
+        {coach ? <TutorialCoach title={coach.title} text={coach.text} low={step === "modal-add"} /> : null}
         {prompt ? <div className={styles.guestBottomBar}>{prompt}</div> : null}
         {logFlash ? <div className={styles.logFlash}><span className={styles.logFlashDot}>✓</span>{logFlash}</div> : null}
         {celebrate ? <GoalCelebration /> : null}
@@ -688,9 +688,18 @@ function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "deta
   return null;
 }
 
-function TutorialCoach({ title, text }: { title: string; text: string }) {
+function TutorialCoach({ title, text, low = false }: { title: string; text: string; low?: boolean }) {
+  const lowCoachStyle = low
+    ? {
+        bottom: "calc(4px + env(safe-area-inset-bottom))",
+        padding: "10px 14px",
+        borderRadius: "20px",
+        maxWidth: "calc(100vw - 58px)",
+      }
+    : undefined;
+
   return (
-    <div className={styles.guestCoachCard} role="status" aria-live="polite">
+    <div className={styles.guestCoachCard} style={lowCoachStyle} role="status" aria-live="polite">
       <div className={styles.guestCoachKicker}>First run</div>
       <div className={styles.guestCoachTitle}>{title}</div>
       <div className={styles.guestCoachText}>{text}</div>
