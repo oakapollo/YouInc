@@ -609,15 +609,16 @@ export default function GuestPage() {
                   <label className={styles.label}>{modalKind === "goals" ? "Goal" : modalKind === "bad" ? "Bad habit" : "Habit"}<input className={styles.input} value={entryTitle} onChange={(e) => setEntryTitle(e.target.value)} /></label>
                   <div className={styles.row2}>
                     <label className={styles.label}>Type<input className={styles.input} value={SECTION_TITLES[modalKind]} readOnly /></label>
+                    <div className={styles.helperTitle}>Adjust intensity</div>
+                      <div className={styles.helperText}>
+                        Smaller habits do not need the same reward as massive habits. Set the reward and penalty to what feels fair.
+                      </div>
+    
                     <label className={styles.label}>Notes<input className={styles.input} value={modalKind === "bad" ? "honesty beats hiding" : modalKind === "goals" ? "make progress visible" : "tracking habits is also a habit"} readOnly /></label>
                   </div>
 
                   {(modalKind === "good" || modalKind === "bad") ? (
                     <div className={styles.intensityBox}>
-                      <div className={styles.helperTitle}>Adjust intensity</div>
-                      <div className={styles.helperText}>
-                        Smaller habits do not need the same reward as massive habits. Set the reward and penalty to what feels fair.
-                      </div>
                       <div className={styles.previewActions}>
                         <span className={styles.previewHold}>Hold <span className={styles.delta}>+{INTENSITY_LEVELS[modalIntensityIndex].hold} UC</span></span>
                         <span className={styles.previewSold}>Sold <span className={styles.delta}>{INTENSITY_LEVELS[modalIntensityIndex].sold} UC</span></span>
