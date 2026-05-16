@@ -823,10 +823,10 @@ function submitBuyActivity() {
 
   const dashboardStats = useMemo(
     () => [
-      { label: "Goals", value: store.goals.length, tone: "neutral" },
-      { label: "Good", value: store.goodHabits.length, tone: "positive" },
-      { label: "Bad", value: store.badHabits.length, tone: "warning" },
-      { label: "Addictions", value: store.addictions.length, tone: "danger" },
+      { key: "goals" as TabKey, label: "Goals", value: store.goals.length, tone: "neutral" },
+      { key: "good" as TabKey, label: "Good", value: store.goodHabits.length, tone: "positive" },
+      { key: "bad" as TabKey, label: "Bad", value: store.badHabits.length, tone: "warning" },
+      { key: "addictions" as TabKey, label: "Addictions", value: store.addictions.length, tone: "danger" },
     ],
     [store.addictions.length, store.badHabits.length, store.goals.length, store.goodHabits.length]
   );
@@ -863,11 +863,10 @@ function submitBuyActivity() {
     });
   }
 
-  function switchTab(next: TabKey, behavior: ScrollBehavior = "smooth") {
+  function switchTab(next: TabKey, _behavior: ScrollBehavior = "smooth") {
     setTab(next);
     setIsModalOpen(false);
     resetFormForTab(next);
-    requestAnimationFrame(() => scrollToSection(next, behavior));
   }
 
   function stepSection(direction: -1 | 1) {
@@ -879,22 +878,7 @@ function submitBuyActivity() {
   }
 
   function handleSectionScroll() {
-    const container = sectionScrollerRef.current;
-    if (!container) return;
-
-    if (sectionSnapTimeoutRef.current) clearTimeout(sectionSnapTimeoutRef.current);
-
-    sectionSnapTimeoutRef.current = setTimeout(() => {
-      const index = Math.max(
-        0,
-        Math.min(SECTION_ORDER.length - 1, Math.round(container.scrollLeft / Math.max(container.clientWidth, 1)))
-      );
-      const nextTab = SECTION_ORDER[index];
-      if (nextTab && nextTab !== tab) {
-        setTab(nextTab);
-        setIsModalOpen(false);
-      }
-    }, 60);
+    // Sections are switched by the top metric cards and arrow buttons now.
   }
 
   function toggleDow(day: number) {
@@ -1112,10 +1096,18 @@ function submitBuyActivity() {
                   : "";
 
               return (
-                <div key={item.label} className={`${styles.heroStat} ${toneClass}`}>
+                <button
+                  key={item.key}
+                  type="button"
+                  className={`${styles.heroStat} ${toneClass} ${tab === item.key ? styles.heroStatActive : ""}`}
+                  onClick={() => switchTab(item.key)}
+                  aria-pressed={tab === item.key}
+                  aria-label={`Show ${item.label}`}
+                >
                   <span>{item.label}</span>
                   <strong>{item.value}</strong>
-                </div>
+                  <small>{tab === item.key ? "Selected" : "Tap to select"}</small>
+                </button>
               );
             })}
           </div>
@@ -1126,23 +1118,6 @@ function submitBuyActivity() {
             <span className={styles.addPlus}>＋</span>
             Add entry
           </button>
-        </div>
-    
-
-        <div className={styles.tabs} role="tablist" aria-label="You Inc sections">
-          {SECTION_ORDER.map((key) => (
-            <button
-              key={key}
-              type="button"
-              role="tab"
-              aria-selected={tab === key}
-              className={`${styles.tab} ${tab === key ? styles.tabActive : ""}`}
-              onClick={() => switchTab(key)}
-            >
-              <span>{SECTION_TITLES[key]}</span>
-              <small>{SECTION_SUBTITLES[key]}</small>
-            </button>
-          ))}
         </div>
 
         <section className={styles.panel}>
@@ -1179,7 +1154,7 @@ function submitBuyActivity() {
   className={styles.sectionScroller}
 >
 
-            <div className={styles.section}>
+            <div className={styles.section} hidden={tab !== "goals"}>
               <div className={styles.list}>
                 {store.goals.length === 0 ? (
                   <EmptyState text="No goals yet. Add one and give it an expiry date." />
@@ -1217,7 +1192,7 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div className={styles.section}>
+            <div className={styles.section} hidden={tab !== "good"}>
               <div className={styles.list}>
                 {store.goodHabits.length === 0 ? (
                   <EmptyState text="No good habits yet. Add a habit and choose frequency." />
@@ -1294,7 +1269,7 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div className={styles.section}>
+            <div className={styles.section} hidden={tab !== "bad"}>
               <div className={styles.list}>
                 {store.badHabits.length === 0 ? (
                   <EmptyState text="No bad habits yet. Add one and choose its intensity." />
@@ -1368,7 +1343,7 @@ function submitBuyActivity() {
               </div>
             </div>
 
-            <div className={styles.section}>
+            <div className={styles.section} hidden={tab !== "addictions"}>
               <div className={styles.list}>
                 {store.addictions.length === 0 ? (
                   <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
@@ -1428,22 +1403,6 @@ function submitBuyActivity() {
               </div>
             </div>
           </div>
-
-          <div className={styles.sectionDots}>
-            {SECTION_ORDER.map((key) => (
-              <button
-                key={key}
-                type="button"
-                onClick={() => switchTab(key)}
-                aria-label={`Go to ${SECTION_TITLES[key]}`}
-                className={`${styles.sectionDot} ${key === tab ? styles.sectionDotActive : ""}`}
-              />
-            ))}
-          </div>
-        </section>
-
-        <section className={styles.chartIntro}>
-          <div className={styles.chartIntroBadge}>{candles.length} candles loaded</div>
         </section>
 
         {/* CHART BELOW PANEL */}
@@ -2152,17 +2111,6 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
   return (
     <div className={styles.chartSection}>
       <div className={styles.chartControls}>
-        <div className={styles.chartBtnRow}>
-          <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("out")} aria-label="Zoom out">
-            −
-          </button>
-          <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("in")} aria-label="Zoom in">
-            +
-          </button>
-          <button className={styles.chartBtn} type="button" onClick={resetView} aria-label="Reset view">
-            Reset
-          </button>
-        </div>
         <div className={styles.chartMeta}>
           <div className={styles.viewToggle} aria-label="Chart view">
             <button className={`${styles.viewToggleBtn} ${chartView === "candles" ? styles.viewToggleBtnOn : ""}`} type="button" onClick={() => setChartView("candles")} aria-pressed={chartView === "candles"}>
@@ -2173,14 +2121,18 @@ function CandleChart({ data, tx, timeframe }: { data: Candle[]; tx: Tx[]; timefr
             </button>
           </div>
           <div className={styles.viewportBadge}>{visibleData.length} visible</div>
-          <label className={styles.autoFollow}>
-            <input
-              type="checkbox"
-              checked={autoFollow}
-              onChange={(event) => setAutoFollow(event.target.checked)}
-            />
-            Auto-follow latest
-          </label>
+        </div>
+
+        <div className={styles.chartBtnRow}>
+          <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("out")} aria-label="Zoom out">
+            −
+          </button>
+          <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("in")} aria-label="Zoom in">
+            +
+          </button>
+          <button className={styles.chartBtn} type="button" onClick={resetView} aria-label="Reset view">
+            Reset
+          </button>
         </div>
       </div>
 

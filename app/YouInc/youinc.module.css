@@ -1829,3 +1829,153 @@ select.input {
 .guestAddEntryRow {
   margin: 14px 0 14px;
 }
+
+
+/* --- YouInc section selector cleanup --- */
+.heroStats {
+  align-items: stretch;
+}
+
+.heroStat {
+  appearance: none;
+  cursor: pointer;
+  text-align: left;
+  min-height: 118px;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+  touch-action: manipulation;
+}
+
+.heroStat:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #141414;
+}
+
+.heroStat:active {
+  transform: scale(0.98);
+}
+
+.heroStat small {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.heroStatActive {
+  border-color: rgba(255, 255, 255, 0.42) !important;
+  background: #f5f5f5 !important;
+  color: #000000;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+
+.heroStatActive span,
+.heroStatActive strong,
+.heroStatActive small {
+  color: #000000;
+}
+
+.heroStatActive small {
+  opacity: 0.68;
+}
+
+.tabs {
+  display: none !important;
+}
+
+.sectionScroller {
+  display: block !important;
+  overflow: visible !important;
+  width: 100%;
+  padding-bottom: 0;
+}
+
+.section {
+  min-width: 0 !important;
+  width: 100%;
+  flex: none !important;
+}
+
+.section[hidden] {
+  display: none !important;
+}
+
+.panel {
+  margin-top: 18px;
+}
+
+.empty {
+  padding: 34px 18px !important;
+  min-height: 150px;
+  display: grid;
+  place-items: center;
+}
+
+.emptyText {
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* --- Cleaner chart controls --- */
+.chartIntro {
+  display: none !important;
+}
+
+.chartControls {
+  align-items: flex-start !important;
+  justify-content: space-between !important;
+  gap: 12px;
+  margin-top: 18px;
+  margin-bottom: 14px;
+}
+
+.chartMeta {
+  justify-content: flex-start !important;
+  order: 1;
+}
+
+.chartBtnRow {
+  order: 2;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.autoFollow {
+  display: none !important;
+}
+
+.viewToggle,
+.viewToggleGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 4px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: #111111;
+}
+
+@media (max-width: 640px) {
+  .chartControls {
+    align-items: stretch !important;
+  }
+
+  .chartMeta {
+    width: 100%;
+  }
+
+  .viewToggle {
+    flex: 1;
+  }
+
+  .viewportBadge {
+    flex: 0 0 auto;
+  }
+
+  .chartBtnRow {
+    justify-content: flex-start;
+  }
+}
