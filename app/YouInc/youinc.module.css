@@ -1776,3 +1776,56 @@ select.input {
   background: rgba(255, 255, 255, 0.08);
   color: rgba(255, 255, 255, 0.95);
 }
+
+/* --- Top metric cards now replace the old section tabs --- */
+.heroStats {
+  align-items: stretch;
+}
+
+.heroStat {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  text-align: left;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+  touch-action: manipulation;
+}
+
+.heroStat:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.18);
+  background: #141414;
+}
+
+.heroStat:active {
+  transform: scale(0.98);
+}
+
+.heroStat small {
+  display: block;
+  margin-top: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.46);
+}
+
+.heroStatActive {
+  border-color: rgba(255, 255, 255, 0.42) !important;
+  background: #f5f5f5 !important;
+  color: #000000;
+  box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.08);
+}
+
+.heroStatActive span,
+.heroStatActive strong,
+.heroStatActive small {
+  color: #000000;
+}
+
+.heroStatActive small {
+  opacity: 0.68;
+}
+
+.guestAddEntryRow {
+  margin: 14px 0 14px;
+}

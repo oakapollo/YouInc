@@ -1095,7 +1095,6 @@ function submitBuyActivity() {
 
         <section className={styles.heroCard}>
           <div className={styles.heroCopy}>
-            <div className={styles.heroTitle}>Build momentum. Cut noise. Watch the line react.</div>
             <div className={styles.heroText}>
               Good actions push the chart up, relapses and drift pull it down. Keep the loop tight and the feedback obvious.
             </div>
@@ -1444,17 +1443,13 @@ function submitBuyActivity() {
         </section>
 
         <section className={styles.chartIntro}>
-          <div>
-            <div className={styles.chartIntroTitle}>Behaviour chart</div>
-            <div className={styles.chartIntroText}>Zoom, pan, tap candles, and inspect the actions that moved your price.</div>
-          </div>
           <div className={styles.chartIntroBadge}>{candles.length} candles loaded</div>
         </section>
 
         {/* CHART BELOW PANEL */}
         <section className={styles.topStats}>
           <div className={styles.statBlock}>
-            <div className={styles.statLabel}>Market Cap</div>
+            <div className={styles.statLabel}>Market Cap (Total Credits)</div>
             <div className={styles.statValue}>{store.marketCapUC.toLocaleString()} UC</div>
           </div>
 
