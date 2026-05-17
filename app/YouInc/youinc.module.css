@@ -2076,3 +2076,129 @@ select.input {
     justify-content: center;
   }
 }
+
+
+/* --- Guest tutorial final additions --- */
+
+.guestScrollHint {
+  position: fixed;
+  left: 50%;
+  bottom: calc(118px + env(safe-area-inset-bottom));
+  z-index: 85;
+  transform: translateX(-50%);
+  display: grid;
+  gap: 4px;
+  place-items: center;
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 28px;
+  font-weight: 900;
+  animation: guestScrollHintBounce 0.85s ease-in-out infinite alternate;
+}
+
+@keyframes guestScrollHintBounce {
+  from {
+    transform: translateX(-50%) translateY(0);
+    opacity: 0.65;
+  }
+  to {
+    transform: translateX(-50%) translateY(12px);
+    opacity: 1;
+  }
+}
+
+.guestScrollHintUp {
+  bottom: auto;
+  top: calc(92px + env(safe-area-inset-top));
+  animation-name: guestScrollHintUpBounce;
+}
+
+@keyframes guestScrollHintUpBounce {
+  from {
+    transform: translateX(-50%) translateY(0);
+    opacity: 0.65;
+  }
+  to {
+    transform: translateX(-50%) translateY(-12px);
+    opacity: 1;
+  }
+}
+
+.guestAccountOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 130;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.guestAccountBox {
+  width: min(100%, 460px);
+  border-radius: 24px;
+  padding: 22px;
+  background: #0b0b0b;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.72);
+}
+
+.guestAccountTitle {
+  font-size: 24px;
+  line-height: 1.15;
+  font-weight: 900;
+  color: #f5f5f5;
+}
+
+.guestAccountText {
+  margin-top: 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.66);
+}
+
+.guestAccountActions {
+  margin-top: 18px;
+  display: grid;
+  gap: 10px;
+}
+
+.guestDemoBanner {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: calc(14px + env(safe-area-inset-bottom));
+  z-index: 100;
+  max-width: 620px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.94);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.5);
+}
+
+.guestDemoBannerText {
+  font-size: 12px;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+@media (max-width: 640px) {
+  .guestDemoBanner {
+    border-radius: 22px;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .guestDemoBanner button {
+    width: 100%;
+    justify-content: center;
+  }
+}

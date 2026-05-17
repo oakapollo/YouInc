@@ -1,106 +1,335 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { applyTaxes, getUkOffsetMinutes, isMarketOpen, type DeltaKind } from "../YouInc/rules";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "../YouInc/youinc.module.css";
+import { useRouter } from "next/navigation";
+
+
+
+
+
 
 type TabKey = "goals" | "good" | "bad" | "addictions";
-type Timeframe = "1d" | "3d" | "1w" | "1m";
-type Tx = { id: string; ts: number; deltaUC: number; label: string };
-type DemoItem = { id: string; title: string; notes: string; createdAt: number; holdUC: number; soldUC: number };
-type Candle = { t: number; o: number; h: number; l: number; c: number; tx: Tx[] };
-
-type Step =
-  | "good-tab"
-  | "add-entry"
-  | "modal-add"
-  | "hold"
-  | "chart-day"
-  | "tf-info"
-  | "buy-open"
-  | "buy-complete"
-  | "tap-candle"
-  | "details"
-  | "bad-tab"
-  | "bad-add-entry"
-  | "bad-modal-add"
-  | "bad-reach"
-  | "bad-popup"
-  | "bad-sold"
-  | "goals-tab"
-  | "goal-add-entry"
-  | "goal-modal-add"
-  | "goal-reach"
-  | "goal-hold"
-  | "goal-chart"
-  | "goal-details"
-  | "final";
 
 const SECTION_ORDER: TabKey[] = ["goals", "good", "bad", "addictions"];
-const INTENSITY_LEVELS = [
-  { hold: 10, sold: -10 },
-  { hold: 20, sold: -10 },
-  { hold: 40, sold: -20 },
-  { hold: 80, sold: -40 },
-  { hold: 100, sold: -50 },
-];
+
 const SECTION_TITLES: Record<TabKey, string> = {
   goals: "Goals",
   good: "Good Habits",
   bad: "Bad Habits",
   addictions: "Addictions",
 };
+
 const SECTION_SUBTITLES: Record<TabKey, string> = {
-  goals: "Big targets that move your chart.",
+  goals: "Track bigger targets with a clear deadline.",
   good: "Reward consistency and build momentum.",
-  bad: "Log behaviour you want to stop feeding.",
-  addictions: "Be honest when the strongest patterns pull back.",
+  bad: "Treat slip-ups as data, not drama.",
+  addictions: "Monitor relapses and escalating penalties.",
 };
+
+const INTENSITY_OPTIONS = [
+  { hold: 10, sold: 10 },
+  { hold: 20, sold: 10 },
+  { hold: 40, sold: 20 },
+  { hold: 80, sold: 40 },
+  { hold: 100, sold: 50 },
+] as const;
+
+const DEFAULT_INTENSITY_INDEX = INTENSITY_OPTIONS.length - 1;
+
+type IntensityOption = (typeof INTENSITY_OPTIONS)[number];
+
+function getIntensityByIndex(index: number): IntensityOption {
+  return INTENSITY_OPTIONS[Math.max(0, Math.min(INTENSITY_OPTIONS.length - 1, index))] ?? INTENSITY_OPTIONS[DEFAULT_INTENSITY_INDEX];
+}
+
+function getIntensityIndexFromValues(holdUC?: number, soldUC?: number) {
+  const index = INTENSITY_OPTIONS.findIndex((option) => option.hold === (holdUC ?? 100) && option.sold === (soldUC ?? 50));
+  return index >= 0 ? index : DEFAULT_INTENSITY_INDEX;
+}
+
+function TrashIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M9 3h6l1 2h4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 5h16" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M7 8l1 12h8l1-12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+type Goal = { id: string; title: string; expiry: string; createdAt: number };
+
+type GoodHabit = {
+  id: string;
+  title: string;
+  frequencyMode: "daily" | "weekly";
+  daysOfWeek: number[];
+  notes: string;
+  holdUC?: number;
+  soldUC?: number;
+  createdAt: number;
+};
+
+type BadHabit = {
+  id: string;
+  title: string;
+  expiryMode?: "date" | "permanent";
+  expiryDate?: string;
+  notes?: string;
+  holdUC?: number;
+  soldUC?: number;
+  createdAt: number;
+};
+
+type Addiction = { id: string; title: string; createdAt: number };
+
+type Tx = { id: string; ts: number; deltaUC: number; label: string };
+
+type Store = {
+  marketCapUC: number;
+  tx: Tx[];
+  goals: Goal[];
+  goodHabits: GoodHabit[];
+  badHabits: BadHabit[];
+  addictions: Addiction[];
+
+
+  // NEW: tracks the last hour-bucket we processed decay for (ms since epoch, floored to hour)
+  lastDecayHourTs?: number;
+};
+
+type Candle = { t: number; o: number; h: number; l: number; c: number };
+
+const ADDICTION_BASE_CHARGE = 100;
+const ADDICTION_MAX_CHARGE = 3200;
+const ADDICTION_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
+
+type AddictionChargeState = {
+  currentCharge: number;
+  nextReductionAt: number | null;
+  nextReductionCharge: number | null;
+  lastSoldTs: number | null;
+  reachedMax: boolean;
+};
+
+function getAddictionSoldLabel(title: string) {
+  return `${title} (Addiction · Sold)`;
+}
+
+function getAddictionResetLabel(title: string) {
+  return `${title} (Addiction · Reset charges)`;
+}
+
+function decayAddictionCharge(charge: number, elapsedMs: number) {
+  if (charge <= ADDICTION_BASE_CHARGE) return charge;
+  const steps = Math.max(0, Math.floor(elapsedMs / ADDICTION_COOLDOWN_MS));
+  let next = charge;
+  for (let i = 0; i < steps; i += 1) {
+    next = Math.max(ADDICTION_BASE_CHARGE, Math.floor(next / 2));
+    if (next <= ADDICTION_BASE_CHARGE) break;
+  }
+  return next;
+}
+
+function getAddictionChargeState(title: string, tx: Tx[], now = Date.now()): AddictionChargeState {
+  const soldLabel = getAddictionSoldLabel(title);
+  const resetLabel = getAddictionResetLabel(title);
+
+  const relevant = [...tx]
+    .filter((entry) => entry.label === soldLabel || entry.label === resetLabel)
+    .sort((a, b) => a.ts - b.ts);
+
+  let nextCharge = ADDICTION_BASE_CHARGE;
+  let lastSoldTs: number | null = null;
+
+  for (const entry of relevant) {
+    if (entry.label === resetLabel) {
+      nextCharge = ADDICTION_BASE_CHARGE;
+      lastSoldTs = null;
+      continue;
+    }
+
+    if (lastSoldTs !== null) {
+      nextCharge = decayAddictionCharge(nextCharge, entry.ts - lastSoldTs);
+    }
+
+    const appliedCharge = nextCharge;
+    nextCharge = Math.min(ADDICTION_MAX_CHARGE, appliedCharge * 2);
+    lastSoldTs = entry.ts;
+  }
+
+  if (lastSoldTs !== null) {
+    nextCharge = decayAddictionCharge(nextCharge, now - lastSoldTs);
+  }
+
+  const nextReductionAt =
+    lastSoldTs !== null && nextCharge > ADDICTION_BASE_CHARGE
+      ? lastSoldTs + (Math.floor((now - lastSoldTs) / ADDICTION_COOLDOWN_MS) + 1) * ADDICTION_COOLDOWN_MS
+      : null;
+
+  return {
+    currentCharge: nextCharge,
+    nextReductionAt,
+    nextReductionCharge: nextCharge > ADDICTION_BASE_CHARGE ? Math.max(ADDICTION_BASE_CHARGE, Math.floor(nextCharge / 2)) : null,
+    lastSoldTs,
+    reachedMax: nextCharge >= ADDICTION_MAX_CHARGE,
+  };
+}
+
+function formatDurationShort(ms: number) {
+  const totalMinutes = Math.max(0, Math.ceil(ms / (60 * 1000)));
+  const days = Math.floor(totalMinutes / (60 * 24));
+  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
+  const minutes = totalMinutes % 60;
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
+
+function stripUndefined<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripUndefined(item)) as T;
+  }
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).filter(([, v]) => v !== undefined);
+    const next = entries.reduce<Record<string, unknown>>((acc, [k, v]) => {
+      acc[k] = stripUndefined(v);
+      return acc;
+    }, {});
+    return next as T;
+  }
+  return value;
+}
+
 
 function uid() {
   return Math.random().toString(36).slice(2) + Date.now().toString(36);
 }
 
-function dayStart(ts: number) {
-  const d = new Date(ts);
-  d.setHours(0, 0, 0, 0);
-  return d.getTime();
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
 }
 
-function timeframeMs(tf: Timeframe) {
-  if (tf === "3d") return 3 * 86400000;
-  if (tf === "1w") return 7 * 86400000;
-  if (tf === "1m") return 30 * 86400000;
-  return 86400000;
+function formatDow(d: number) {
+  return ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][d] ?? "";
 }
 
-function bucketStart(ts: number, tf: Timeframe) {
-  const ms = timeframeMs(tf);
-  if (tf === "1d") return dayStart(ts);
-  return Math.floor(ts / ms) * ms;
+function floorToBucket(ts: number, bucketMs: number) {
+  return Math.floor(ts / bucketMs) * bucketMs;
 }
 
-function priceFromCap(capUC: number) {
-  return capUC / 10000;
+function getUkLocalParts(ts: number) {
+  const ukWallDate = new Date(getUkWallMs(new Date(ts)));
+  return {
+    year: ukWallDate.getUTCFullYear(),
+    month: ukWallDate.getUTCMonth(),
+    day: ukWallDate.getUTCDate(),
+    dayOfWeek: ukWallDate.getUTCDay(),
+  };
 }
 
-function buildCandles(currentCapUC: number, txDesc: Tx[], tf: Timeframe): Candle[] {
-  const now = Date.now();
-  const count = tf === "1m" ? 12 : tf === "1w" ? 16 : tf === "3d" ? 24 : 30;
-  const ms = timeframeMs(tf);
-  const end = bucketStart(now, tf);
-  const starts = Array.from({ length: count }, (_, i) => end - (count - 1 - i) * ms);
-  const txAsc = [...txDesc].sort((a, b) => a.ts - b.ts);
-
-  let cap = currentCapUC;
-  for (const tx of txAsc) {
-    if (tx.ts >= starts[0]) cap -= tx.deltaUC;
+function getBucketStartUtcMs(ts: number, timeframe: "1d" | "3d" | "1w" | "1m") {
+  if (timeframe === "1d") {
+    return floorToBucket(ts, 24 * 60 * 60 * 1000);
   }
-  cap = Math.max(0, cap);
 
-  return starts.map((start) => {
-    const endOfBucket = start + ms;
-    const bucketTx = txAsc.filter((tx) => tx.ts >= start && tx.ts < endOfBucket);
+  if (timeframe === "3d") {
+    return floorToBucket(ts, 3 * 24 * 60 * 60 * 1000);
+  }
+
+  const { year, month, day, dayOfWeek } = getUkLocalParts(ts);
+
+  if (timeframe === "1w") {
+    const diffFromMonday = (dayOfWeek + 6) % 7;
+    const startOfDayUkMs = Date.UTC(year, month, day);
+    return ukWallMsToUtcMs(startOfDayUkMs - diffFromMonday * 24 * 60 * 60 * 1000);
+  }
+
+  return ukWallMsToUtcMs(Date.UTC(year, month, 1));
+}
+
+function getNextBucketStartUtcMs(bucketStartUtcMs: number, timeframe: "1d" | "3d" | "1w" | "1m") {
+  if (timeframe === "1d") return bucketStartUtcMs + 24 * 60 * 60 * 1000;
+  if (timeframe === "3d") return bucketStartUtcMs + 3 * 24 * 60 * 60 * 1000;
+
+  const { year, month, day } = getUkLocalParts(bucketStartUtcMs);
+
+  if (timeframe === "1w") {
+    const startOfWeekUkMs = Date.UTC(year, month, day);
+    return ukWallMsToUtcMs(startOfWeekUkMs + 7 * 24 * 60 * 60 * 1000);
+  }
+
+  return ukWallMsToUtcMs(Date.UTC(year, month + 1, 1));
+}
+
+function getPreviousBucketStartUtcMs(bucketStartUtcMs: number, timeframe: "1d" | "3d" | "1w" | "1m") {
+  if (timeframe === "1d") return bucketStartUtcMs - 24 * 60 * 60 * 1000;
+  if (timeframe === "3d") return bucketStartUtcMs - 3 * 24 * 60 * 60 * 1000;
+
+  const { year, month, day } = getUkLocalParts(bucketStartUtcMs);
+
+  if (timeframe === "1w") {
+    const startOfWeekUkMs = Date.UTC(year, month, day);
+    return ukWallMsToUtcMs(startOfWeekUkMs - 7 * 24 * 60 * 60 * 1000);
+  }
+
+  return ukWallMsToUtcMs(Date.UTC(year, month - 1, 1));
+}
+
+function buildCandles(startCapUC: number, txAsc: Tx[], timeframe: "1d" | "3d" | "1w" | "1m", lookbackBuckets: number): Candle[] {
+  const now = Date.now();
+  const endBucket = getBucketStartUtcMs(now, timeframe);
+  const earliestTx = txAsc[0]?.ts ?? endBucket;
+  const earliestBucket = getBucketStartUtcMs(earliestTx, timeframe);
+
+  const historicalBuckets: number[] = [];
+  let cursor = earliestBucket;
+  let guard = 0;
+  while (cursor <= endBucket && guard < 5000) {
+    historicalBuckets.push(cursor);
+    cursor = getNextBucketStartUtcMs(cursor, timeframe);
+    guard += 1;
+  }
+
+  const effectiveBuckets = Math.max(lookbackBuckets, historicalBuckets.length || 1);
+  const bucketStarts: number[] = [endBucket];
+  while (bucketStarts.length < effectiveBuckets) {
+    bucketStarts.unshift(getPreviousBucketStartUtcMs(bucketStarts[0], timeframe));
+  }
+
+  const startBucket = bucketStarts[0];
+
+  let capAtStart = startCapUC;
+  for (const tx of txAsc) {
+    if (tx.ts >= startBucket) capAtStart -= tx.deltaUC;
+  }
+  capAtStart = Math.max(0, capAtStart);
+
+  const bucketMap = new Map<number, Tx[]>();
+  for (const tx of txAsc) {
+    const b = getBucketStartUtcMs(tx.ts, timeframe);
+    if (b < startBucket || b > endBucket) continue;
+    const arr = bucketMap.get(b) ?? [];
+    arr.push(tx);
+    bucketMap.set(b, arr);
+  }
+
+  const toPrice = (uc: number) => uc / 10000;
+  const candles: Candle[] = [];
+  let cap = capAtStart;
+
+  for (const bucketStart of bucketStarts) {
+    const bucketTx = (bucketMap.get(bucketStart) ?? []).sort((a, z) => a.ts - z.ts);
+
     const open = cap;
     let high = cap;
     let low = cap;
@@ -111,65 +340,150 @@ function buildCandles(currentCapUC: number, txDesc: Tx[], tf: Timeframe): Candle
       low = Math.min(low, cap);
     }
 
-    return {
-      t: start,
-      o: priceFromCap(open),
-      h: priceFromCap(high),
-      l: priceFromCap(low),
-      c: priceFromCap(cap),
-      tx: bucketTx,
-    };
-  });
+    candles.push({
+      t: bucketStart,
+      o: toPrice(open),
+      h: toPrice(high),
+      l: toPrice(low),
+      c: toPrice(cap),
+    });
+  }
+
+  return candles;
 }
 
-function periodWord(tf: Timeframe) {
-  if (tf === "1w") return "week";
-  if (tf === "1m") return "month";
-  if (tf === "3d") return "3 days";
-  return "day";
+// --- UK hour-bucket helpers for decay (DST-safe via Europe/London offset) ---
+const HOUR_MS = 60 * 60 * 1000;
+
+function getUkWallMs(now: Date) {
+  return now.getTime() + getUkOffsetMinutes(now) * 60 * 1000;
 }
 
-function formatMoney(value: number) {
-  return `$${value.toFixed(2)}`;
+function ukWallMsToUtcMs(ukWallMs: number) {
+  let guess = ukWallMs - getUkOffsetMinutes(new Date()) * 60 * 1000;
+  for (let i = 0; i < 2; i += 1) {
+    const offsetMinutes = getUkOffsetMinutes(new Date(guess));
+    const nextGuess = ukWallMs - offsetMinutes * 60 * 1000;
+    if (nextGuess === guess) break;
+    guess = nextGuess;
+  }
+  return guess;
+}
+
+function getUkHourBucketStartMs(now = new Date()) {
+  const ukNowMs = getUkWallMs(now);
+  const bucketUkMs = Math.floor(ukNowMs / HOUR_MS) * HOUR_MS;
+  return ukWallMsToUtcMs(bucketUkMs);
+}
+
+function getNextUkHourBucketStartMs(now = new Date()) {
+  const ukNowMs = getUkWallMs(now);
+  const bucketUkMs = Math.floor(ukNowMs / HOUR_MS) * HOUR_MS + HOUR_MS;
+  return ukWallMsToUtcMs(bucketUkMs);
+}
+
+function countOpenBucketsBetween(lastBucketUtcMs: number, currentBucketUtcMs: number) {
+  if (currentBucketUtcMs <= lastBucketUtcMs) return 0;
+
+  const lastBucketUkMs = getUkWallMs(new Date(lastBucketUtcMs));
+  const currentBucketUkMs = getUkWallMs(new Date(currentBucketUtcMs));
+  let openBuckets = 0;
+
+  for (let ukMs = lastBucketUkMs + HOUR_MS; ukMs <= currentBucketUkMs; ukMs += HOUR_MS) {
+    const bucketUtcMs = ukWallMsToUtcMs(ukMs);
+    if (isMarketOpen(new Date(bucketUtcMs))) {
+      openBuckets += 1;
+    }
+  }
+
+  return openBuckets;
 }
 
 export default function GuestPage() {
   const router = useRouter();
-  const [step, setStep] = useState<Step>("good-tab");
-  const [tab, setTab] = useState<TabKey>("goals");
+  const user = { displayName: "Demo Trader", email: "demo@youinc.app" };
+  const loading = false;
+
+  // ✅ ALL HOOKS MUST RUN EVERY RENDER — so all useState go BEFORE any early return
+
+  const [tab, setTab] = useState<TabKey>("good");
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [modalKind, setModalKind] = useState<TabKey>("good");
-  const [entryTitle, setEntryTitle] = useState("Log my habits");
-  const [modalIntensityIndex, setModalIntensityIndex] = useState(4);
-  const [items, setItems] = useState<Record<TabKey, DemoItem[]>>({ goals: [], good: [], bad: [], addictions: [] });
-  const [marketCapUC, setMarketCapUC] = useState(10000);
-  const [tx, setTx] = useState<Tx[]>([]);
-  const [tf, setTf] = useState<Timeframe>("1d");
-  const [tfTouched, setTfTouched] = useState(false);
+  const [tf, setTf] = useState<"1d" | "3d" | "1w" | "1m">("1d");
+  const sectionScrollerRef = useRef<HTMLDivElement | null>(null);
+  const sectionSnapTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isBuyOpen, setIsBuyOpen] = useState(false);
-  const [buyActivity, setBuyActivity] = useState("Do 5 push ups. Seriously, do it.");
-  const [selected, setSelected] = useState<Candle | null>(null);
-  const [showBadPopup, setShowBadPopup] = useState(false);
-  const [showGoalMessage, setShowGoalMessage] = useState(false);
-  const [celebrate, setCelebrate] = useState(false);
-  const [visibleZone, setVisibleZone] = useState<"top" | "list" | "chart" | "details">("top");
-  const [logFlash, setLogFlash] = useState<string | null>(null);
+  const [buyActivity, setBuyActivity] = useState("");
+  const [logFlash, setLogFlash] = useState<{ id: string; text: string } | null>(null);
+  const logFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [introDone, setIntroDone] = useState(false);
 
-  const tabsRef = useRef<HTMLDivElement | null>(null);
-  const listRef = useRef<HTMLDivElement | null>(null);
-  const chartRef = useRef<HTMLDivElement | null>(null);
-  const detailsRef = useRef<HTMLDivElement | null>(null);
+  const [store, setStore] = useState<Store>({
+    marketCapUC: 10000, // 10000 UC = 1.000 U$
+    tx: [],
+    goals: [],
+    goodHabits: [],
+    badHabits: [],
+    addictions: [],
+  });
 
-  const price = marketCapUC / 10000;
-  const candles = useMemo(() => buildCandles(marketCapUC, tx, tf), [marketCapUC, tx, tf]);
-  const latestCandle = candles[candles.length - 1] ?? null;
-  const selectedIndex = selected ? candles.findIndex((c) => c.t === selected.t) : -1;
-  const previous = selectedIndex > 0 ? candles[selectedIndex - 1] : null;
-  const selectedMove = selected && previous ? selected.c - previous.c : 0;
-  const selectedPct = selected && previous && previous.c !== 0 ? (selectedMove / previous.c) * 100 : 0;
-  const isSelectedUp = selectedMove >= 0;
-  const selectedPeriodLabel = periodWord(tf);
+  const [storeError, setStoreError] = useState<string | null>(null);
+  const storeDocRef = null;
+
+  const hydratedRef = useRef(false); // got at least one snapshot
+  const suppressWriteRef = useRef(true); // block writes until hydrated
+  const writeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const decayInitRef = useRef(false);
+  const decayTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ------- Modal form state -------
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalExpiry, setGoalExpiry] = useState(todayISO());
+
+  const [goodTitle, setGoodTitle] = useState("");
+  const [goodFrequencyMode, setGoodFrequencyMode] = useState<"daily" | "weekly">("daily");
+  const [goodDays, setGoodDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [goodNotes, setGoodNotes] = useState("");
+  const [goodIntensityIndex, setGoodIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
+
+  const [badTitle, setBadTitle] = useState("");
+  const [badNotes, setBadNotes] = useState("");
+  const [badIntensityIndex, setBadIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
+  const [intensityEditor, setIntensityEditor] = useState<{ kind: "good" | "bad"; id: string; index: number } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<
+    | { type: "switchAccount" }
+    | { type: "deleteItem"; kind: TabKey; id: string; title: string }
+    | null
+  >(null);
+
+  const [addictionTitle, setAddictionTitle] = useState("");
+
+  type GuestStep =
+    | "goodTab" | "addGood" | "goodText" | "goodIntensity" | "submitGood" | "holdGood"
+    | "scrollChart" | "lineMode" | "timeframes" | "buyOpen" | "buyComplete" | "tapChart"
+    | "scrollLogs" | "logsExplain" | "badTab" | "addBad" | "submitBad" | "soldBad" | "honesty"
+    | "goalsTab" | "addGoal" | "submitGoal" | "completeGoal" | "signup" | "demo";
+
+  const [guestStep, setGuestStep] = useState<GuestStep>("goodTab");
+  const [showGoalCelebration, setShowGoalCelebration] = useState(false);
+  const chartAreaRef = useRef<HTMLElement | null>(null);
+  const detailsAreaRef = useRef<HTMLDivElement | null>(null);
+
+  const isGuestStep = (...steps: GuestStep[]) => steps.includes(guestStep);
+  const pulseClass = (...steps: GuestStep[]) => (isGuestStep(...steps) ? styles.guestPulse : "");
+  const advanceGuest = (next: GuestStep) => setGuestStep(next);
+
+  const scrollToGuest = (ref: { current: Element | null }) => {
+    window.setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "center" }), 80);
+  };
+
+
+  // ⏱️ Real-time tick (needed for 1m chart to "move" even without actions)
+  const [nowTick, setNowTick] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => setNowTick(Date.now()), 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -179,252 +493,548 @@ export default function GuestPage() {
     return () => window.clearTimeout(timer);
   }, []);
 
+
+  // Guest demo page: no auth redirect, no Firestore hydration.
   useEffect(() => {
-    const targets = [
-      { name: "top" as const, ref: tabsRef },
-      { name: "list" as const, ref: listRef },
-      { name: "chart" as const, ref: chartRef },
-      { name: "details" as const, ref: detailsRef },
-    ];
+    hydratedRef.current = true;
+    suppressWriteRef.current = false;
+  }, []);
 
-    const onScroll = () => {
-      const midpoint = window.innerHeight * 0.45;
-      let best = targets[0].name;
-      let bestDistance = Number.POSITIVE_INFINITY;
+  // (rest of your component continues here...)
 
-      for (const target of targets) {
-        const el = target.ref.current;
-        if (!el) continue;
-        const rect = el.getBoundingClientRect();
-        const distance = Math.abs(rect.top - midpoint);
-        if (distance < bestDistance) {
-          best = target.name;
-          bestDistance = distance;
-        }
-      }
-      setVisibleZone(best);
+
+  // ------- persistence -------
+  function updateStoreAndSave(mutator: (current: Store) => Store) {
+    setStore((current) => {
+      const next = stripUndefined(mutator(current));
+
+      return next;
+    });
+  }
+
+
+
+  // ------- taxed market cap updates + transactions -------
+function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
+  const preview = applyTaxes(kind, deltaUC, store.marketCapUC).effectiveDeltaUC;
+  const sign = preview > 0 ? "+" : "";
+  const readableLabel = label.replace(/\s\([^)]*\)$/g, "").replace(/^BUY:\s*/i, "");
+  const txId = uid();
+  const txTs = Date.now();
+
+  setLogFlash({
+    id: uid(),
+    text: `${readableLabel} logged · ${sign}${preview} UC`,
+  });
+
+  if (logFlashTimerRef.current) clearTimeout(logFlashTimerRef.current);
+  logFlashTimerRef.current = setTimeout(() => setLogFlash(null), 1800);
+
+  updateStoreAndSave((s) => {
+    const { effectiveDeltaUC, taxed } = applyTaxes(kind, deltaUC, s.marketCapUC);
+
+    const nextCap = Math.max(0, s.marketCapUC + effectiveDeltaUC);
+
+    const tx: Tx = {
+      id: txId,
+      ts: txTs,
+      deltaUC: effectiveDeltaUC,
+      label: taxed ? `${label} (taxed)` : label,
     };
 
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
+    return { ...s, marketCapUC: nextCap, tx: [tx, ...s.tx].slice(0, 2000) };
+  });
+}
+
+
+
+  const runDecayCatchUp = useCallback(async () => {
+    const now = new Date();
+    const currentBucketMs = getUkHourBucketStartMs(now);
+
+    setStore((prev) => {
+      const lastBucketMs = prev.lastDecayHourTs;
+      if (lastBucketMs === undefined) {
+        return { ...prev, lastDecayHourTs: currentBucketMs };
+      }
+
+      const openBuckets = countOpenBucketsBetween(lastBucketMs, currentBucketMs);
+      const nextState: Store = { ...prev, lastDecayHourTs: currentBucketMs };
+
+      if (openBuckets > 0) {
+        const deltaUC = -5 * openBuckets;
+        const { effectiveDeltaUC } = applyTaxes("decay", deltaUC, prev.marketCapUC);
+        const decayTx: Tx = {
+          id: uid(),
+          ts: Date.now(),
+          deltaUC: effectiveDeltaUC,
+          label: `Decay x${openBuckets}`,
+        };
+
+        nextState.marketCapUC = Math.max(0, prev.marketCapUC + effectiveDeltaUC);
+        nextState.tx = [decayTx, ...prev.tx].slice(0, 2000);
+      }
+
+      return nextState;
+    });
+  }, [storeDocRef]);
+
+  // 🧊 Decay scheduler: run once after hydration and after every UK-hour boundary
+  useEffect(() => {
+    if (loading || !user) return;
+
+    let cancelled = false;
+
+    const scheduleNextTick = () => {
+      if (decayTimerRef.current) {
+        clearTimeout(decayTimerRef.current);
+      }
+      const now = new Date();
+      const nextBoundaryMs = getNextUkHourBucketStartMs(now);
+      const delay = Math.max(0, nextBoundaryMs - now.getTime() + 2000);
+
+      decayTimerRef.current = setTimeout(async () => {
+        if (cancelled) return;
+        await runDecayCatchUp();
+        scheduleNextTick();
+      }, delay);
+    };
+
+    if (!decayInitRef.current) {
+      decayInitRef.current = true;
+      void runDecayCatchUp();
+    }
+
+    scheduleNextTick();
+
     return () => {
-      window.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
+      cancelled = true;
+      if (decayTimerRef.current) {
+        clearTimeout(decayTimerRef.current);
+        decayTimerRef.current = null;
+      }
+    };
+  }, [loading, runDecayCatchUp, user]);
+
+  function getPreviewDelta(kind: DeltaKind, deltaUC: number) {
+    return applyTaxes(kind, deltaUC, store.marketCapUC).effectiveDeltaUC;
+  }
+
+  const goodIntensity = getIntensityByIndex(goodIntensityIndex);
+  const badIntensity = getIntensityByIndex(badIntensityIndex);
+
+function submitBuyActivity() {
+  const a = buyActivity.trim();
+  if (!a) return;
+
+  applyDelta("buy", `BUY: ${a}`, +25);
+  setBuyActivity("");
+  setIsBuyOpen(false);
+}
+
+  // ------- derived -------
+  const price = useMemo(() => store.marketCapUC / 10000, [store.marketCapUC]);
+
+  const txAsc = useMemo(() => [...store.tx].sort((a, b) => a.ts - b.ts), [store.tx]);
+
+  const addictionChargeMap = useMemo(() => {
+    const map = new Map<string, AddictionChargeState>();
+    for (const addiction of store.addictions) {
+      map.set(addiction.id, getAddictionChargeState(addiction.title, store.tx, Date.now()));
+    }
+    return map;
+  }, [store.addictions, store.tx, nowTick]);
+
+
+  const candles = useMemo(() => {
+    if (tf === "3d") return buildCandles(store.marketCapUC, txAsc, "3d", 40);
+    if (tf === "1w") return buildCandles(store.marketCapUC, txAsc, "1w", 26);
+    if (tf === "1m") return buildCandles(store.marketCapUC, txAsc, "1m", 18);
+    return buildCandles(store.marketCapUC, txAsc, "1d", 60);
+  }, [tf, store.marketCapUC, txAsc, nowTick]);
+
+  const tfChangePct = useMemo(() => {
+    if (!candles || candles.length < 2) return 0;
+  
+    const first = candles[0];
+    const last = candles[candles.length - 1];
+  
+    const base = first.o || 0;
+    if (base <= 0) return 0;
+  
+    return ((last.c - base) / base) * 100;
+  }, [candles]);
+  
+  const tfChangeLabel = useMemo(() => {
+    const sign = tfChangePct > 0 ? "+" : "";
+    return `${sign}${tfChangePct.toFixed(2)}%`;
+  }, [tfChangePct]);
+  
+  const tfChangeIsUp = tfChangePct >= 0;
+
+  // ------- helpers -------
+  const openModal = () => {
+    resetFormForTab(tab);
+    setIsModalOpen(true);
+  };
+  const closeModal = () => setIsModalOpen(false);
+
+  const modalTitle = useMemo(() => {
+    if (tab === "goals") return "Add Goal";
+    if (tab === "good") return "Add Good Habit";
+    if (tab === "bad") return "Add Bad Habit";
+    return "Add Addiction";
+  }, [tab]);
+
+  const currentSectionIndex = useMemo(() => SECTION_ORDER.indexOf(tab), [tab]);
+  const currentSectionTitle = SECTION_TITLES[tab];
+  const currentSectionSubtitle = SECTION_SUBTITLES[tab];
+
+  const dashboardStats = useMemo(
+    () => [
+      { key: "goals" as TabKey, label: "Goals", value: store.goals.length, tone: "neutral" },
+      { key: "good" as TabKey, label: "Good", value: store.goodHabits.length, tone: "positive" },
+      { key: "bad" as TabKey, label: "Bad", value: store.badHabits.length, tone: "warning" },
+      { key: "addictions" as TabKey, label: "Addictions", value: store.addictions.length, tone: "danger" },
+    ],
+    [store.addictions.length, store.badHabits.length, store.goals.length, store.goodHabits.length]
+  );
+
+  function resetFormForTab(nextTab: TabKey) {
+    if (nextTab === "goals") {
+      setGoalTitle(guestStep === "addGoal" ? "Start tracking my progress" : "");
+      setGoalExpiry(todayISO());
+    } else if (nextTab === "good") {
+      setGoodTitle(guestStep === "addGood" ? "Logging my habits" : "");
+      setGoodFrequencyMode("daily");
+      setGoodDays([1, 2, 3, 4, 5]);
+      setGoodNotes("");
+      setGoodIntensityIndex(DEFAULT_INTENSITY_INDEX);
+    } else if (nextTab === "bad") {
+      setBadTitle(guestStep === "addBad" ? "Your Bad Habit" : "");
+      setBadNotes("");
+      setBadIntensityIndex(DEFAULT_INTENSITY_INDEX);
+    } else {
+      setAddictionTitle("");
+    }
+  }
+
+  function scrollToSection(next: TabKey, behavior: ScrollBehavior = "smooth") {
+    const container = sectionScrollerRef.current;
+    if (!container) return;
+
+    const index = SECTION_ORDER.indexOf(next);
+    if (index < 0) return;
+
+    container.scrollTo({
+      left: index * container.clientWidth,
+      behavior,
+    });
+  }
+
+  function switchTab(next: TabKey, _behavior: ScrollBehavior = "smooth") {
+    setTab(next);
+    setIsModalOpen(false);
+    resetFormForTab(next);
+    if (guestStep === "goodTab" && next === "good") advanceGuest("addGood");
+    if (guestStep === "badTab" && next === "bad") advanceGuest("addBad");
+    if (guestStep === "goalsTab" && next === "goals") advanceGuest("addGoal");
+  }
+
+  function stepSection(direction: -1 | 1) {
+    const nextIndex = Math.max(0, Math.min(SECTION_ORDER.length - 1, currentSectionIndex + direction));
+    const nextTab = SECTION_ORDER[nextIndex];
+    if (nextTab) {
+      switchTab(nextTab);
+    }
+  }
+
+  function handleSectionScroll() {
+    // Sections are switched by the top metric cards and arrow buttons now.
+  }
+
+  function toggleDow(day: number) {
+    setGoodDays((prev) => (prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day].sort()));
+  }
+
+  function canSubmit() {
+    if (tab === "goals") return goalTitle.trim().length > 0 && !!goalExpiry;
+    if (tab === "good") {
+      if (goodTitle.trim().length === 0) return false;
+      if (goodFrequencyMode === "weekly" && goodDays.length === 0) return false;
+      return true;
+    }
+    if (tab === "bad") {
+      return badTitle.trim().length > 0;
+    }
+    return addictionTitle.trim().length > 0;
+  }
+
+  useEffect(() => {
+    requestAnimationFrame(() => scrollToSection(tab, "auto"));
+    return () => {
+      if (sectionSnapTimeoutRef.current) {
+        clearTimeout(sectionSnapTimeoutRef.current);
+        sectionSnapTimeoutRef.current = null;
+      }
+    };
+  }, [tab]);
+
+  // Firestore writes now happen immediately inside updateStoreAndSave/applyDelta.
+  // This avoids the old debounce race where the UI could show a logged action,
+  // then a stale snapshot could overwrite it before the delayed write fired.
+  useEffect(() => {
+    return () => {
+      if (writeTimerRef.current) clearTimeout(writeTimerRef.current);
     };
   }, []);
 
-  function flash(message: string) {
-    setLogFlash(message);
-    window.setTimeout(() => setLogFlash(null), 1800);
-  }
 
-  function applyDelta(label: string, deltaUC: number) {
-    const entry = { id: uid(), ts: Date.now(), deltaUC, label };
-    setTx((prev) => [entry, ...prev].slice(0, 500));
-    setMarketCapUC((prev) => Math.max(0, prev + deltaUC));
-    flash(`${deltaUC > 0 ? "+" : ""}${deltaUC} UC logged`);
-  }
+  function submit() {
+    if (!canSubmit()) return;
 
-  function openEntry(kind: TabKey) {
-    setModalKind(kind);
-    setTab(kind);
-
-    if (kind === "good") {
-      setEntryTitle("Log my habits");
-      setModalIntensityIndex(4);
-      setStep("modal-add");
-    } else if (kind === "bad") {
-      setEntryTitle("Bad Habit");
-      setModalIntensityIndex(4);
-      setStep("bad-modal-add");
-    } else if (kind === "goals") {
-      setEntryTitle("Start Tracking my Progress");
-      setModalIntensityIndex(4);
-      setStep("goal-modal-add");
-    } else {
-      setEntryTitle("Addiction Trigger");
-      setModalIntensityIndex(4);
-    }
-
-    setIsModalOpen(true);
-  }
-
-  function addEntry() {
-    const title = entryTitle.trim() || SECTION_TITLES[modalKind];
-    const intensity = INTENSITY_LEVELS[modalIntensityIndex] ?? INTENSITY_LEVELS[4];
-    const item: DemoItem = {
-      id: uid(),
-      title,
-      notes: modalKind === "goals" ? "Your first big win" : modalKind === "bad" ? "Honesty beats hiding" : "Demo entry",
-      createdAt: Date.now(),
-      holdUC: modalKind === "goals" ? 400 : intensity.hold,
-      soldUC: modalKind === "goals" ? -200 : intensity.sold,
-    };
-
-    setItems((prev) => ({ ...prev, [modalKind]: [item] }));
-    setIsModalOpen(false);
-
-    if (modalKind === "good") setStep("hold");
-    if (modalKind === "bad") {
-      setShowBadPopup(true);
-      setStep("bad-popup");
-    }
-    if (modalKind === "goals") setStep("goal-hold");
-  }
-
-  function handleTabClick(key: TabKey) {
-    setTab(key);
-
-    if (key === "good" && step === "good-tab") setStep("add-entry");
-    if (key === "bad" && step === "bad-tab") setStep("bad-add-entry");
-    if (key === "goals" && step === "goals-tab") setStep("goal-add-entry");
-    if (key === "bad" && step === "bad-reach") {
-      setShowBadPopup(true);
-      setStep("bad-popup");
-    }
-    if (key === "goals" && step === "goal-reach") setStep("goal-hold");
-  }
-
-  function holdGood(item: DemoItem) {
-    applyDelta(`${item.title} · Good habit`, item.holdUC);
-    setTf("1d");
-    setTfTouched(false);
-    setStep("chart-day");
-  }
-
-  function soldBad(item: DemoItem) {
-    applyDelta(`${item.title} · Bad habit`, item.soldUC);
-    setStep("goals-tab");
-  }
-
-  function holdGoal(item: DemoItem) {
-    applyDelta(`${item.title} · Goal complete`, 400);
-    setTf("1d");
-    setTfTouched(false);
-    setCelebrate(true);
-    setTimeout(() => setCelebrate(false), 2200);
-    setStep("goal-chart");
-    setShowGoalMessage(true);
-  }
-
-  function openBuy() {
-    setIsBuyOpen(true);
-    setBuyActivity("Do 5 push ups. Seriously, do it.");
-    setStep("buy-complete");
-  }
-
-  function completeBuy() {
-    applyDelta(`BUY: ${buyActivity.trim() || "Do 5 push ups"}`, 25);
-    setIsBuyOpen(false);
-    setStep("tap-candle");
-  }
-
-  function selectCandle(candle: Candle) {
-    setSelected(candle);
-    if (step === "tap-candle") setStep("details");
-    if (step === "goal-chart") {
-      setStep("goal-details");
-      window.setTimeout(() => detailsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 120);
-    }
-  }
-
-  function continueAfterBreakdown() {
-    if (step === "goal-details") {
-      setStep("final");
+    if (tab === "goals") {
+      const item: Goal = { id: uid(), title: goalTitle.trim(), expiry: goalExpiry, createdAt: Date.now() };
+      updateStoreAndSave((s) => ({ ...s, goals: [item, ...s.goals] }));
+      closeModal();
+      resetFormForTab("goals");
+      if (guestStep === "submitGoal") advanceGuest("completeGoal");
       return;
     }
-    setStep("bad-tab");
+
+    if (tab === "good") {
+      const item: GoodHabit = {
+        id: uid(),
+        title: goodTitle.trim(),
+        frequencyMode: goodFrequencyMode,
+        daysOfWeek: goodFrequencyMode === "daily" ? [0, 1, 2, 3, 4, 5, 6] : goodDays,
+        notes: goodNotes.trim(),
+        holdUC: goodIntensity.hold,
+        soldUC: goodIntensity.sold,
+        createdAt: Date.now(),
+      };
+      updateStoreAndSave((s) => ({ ...s, goodHabits: [item, ...s.goodHabits] }));
+      closeModal();
+      resetFormForTab("good");
+      if (guestStep === "submitGood") advanceGuest("holdGood");
+      return;
+    }
+
+    if (tab === "bad") {
+      const item: BadHabit = {
+        id: uid(),
+        title: badTitle.trim(),
+        notes: badNotes.trim(),
+        holdUC: badIntensity.hold,
+        soldUC: badIntensity.sold,
+        createdAt: Date.now(),
+      };
+      updateStoreAndSave((s) => ({ ...s, badHabits: [item, ...s.badHabits] }));
+      closeModal();
+      resetFormForTab("bad");
+      if (guestStep === "submitBad") advanceGuest("soldBad");
+      return;
+    }
+
+    const item: Addiction = { id: uid(), title: addictionTitle.trim(), createdAt: Date.now() };
+    updateStoreAndSave((s) => ({ ...s, addictions: [item, ...s.addictions] }));
+    closeModal();
+    resetFormForTab("addictions");
   }
 
-  function closeBadPopup() {
-    setShowBadPopup(false);
-    setStep("bad-sold");
+  function requestRemoveItem(kind: TabKey, id: string, title: string) {
+    setConfirmAction({ type: "deleteItem", kind, id, title });
   }
 
-  function isHighlight(target: Step) {
-    return step === target ? styles.guestPulse : "";
+  function removeItem(kind: TabKey, id: string) {
+    if (kind === "goals") updateStoreAndSave((s) => ({ ...s, goals: s.goals.filter((x) => x.id !== id) }));
+    if (kind === "good") updateStoreAndSave((s) => ({ ...s, goodHabits: s.goodHabits.filter((x) => x.id !== id) }));
+    if (kind === "bad") updateStoreAndSave((s) => ({ ...s, badHabits: s.badHabits.filter((x) => x.id !== id) }));
+    if (kind === "addictions") updateStoreAndSave((s) => ({ ...s, addictions: s.addictions.filter((x) => x.id !== id) }));
   }
 
-  function activeAddHighlight() {
-    if (step === "add-entry" || step === "bad-add-entry" || step === "goal-add-entry") return styles.guestPulse;
-    return "";
+  function confirmPendingAction() {
+    if (!confirmAction) return;
+
+    if (confirmAction.type === "switchAccount") {
+      router.push("/login");
+      return;
+    }
+
+    removeItem(confirmAction.kind, confirmAction.id);
+    setConfirmAction(null);
   }
 
-  function bottomPrompt() {
-    if (step === "hold" && visibleZone !== "list") return "Scroll to your Good Habits list, then tap Hold.";
-    if (step === "chart-day" && visibleZone !== "chart") return "Scroll to your chart to see what changed.";
-    if (step === "tf-info" && visibleZone !== "chart") return "Scroll to the chart controls and try the time views.";
-    if (step === "buy-open" && visibleZone !== "chart") return "Scroll to the chart controls, then tap BUY +25 UC.";
-    if (step === "tap-candle" && visibleZone !== "chart") return "Scroll to the chart and tap the highlighted point.";
-    if (step === "details" && visibleZone !== "details") return "Scroll to the Progress Breakdown below the chart.";
-    if (step === "goal-details" && visibleZone !== "details") return "Taking you to Progress Breakdown.";
-    if (step === "bad-tab" || step === "bad-add-entry") return "Go back to the top cards and open Bad Habits.";
-    if (step === "bad-reach") return "Scroll to the top cards, then switch to Bad Habits.";
-    if (step === "bad-sold" && visibleZone !== "list") return "Scroll to your Bad Habits list, then tap Sold.";
-    if (step === "goals-tab" || step === "goal-add-entry") return "Go back to the top cards and open Goals.";
-    if (step === "goal-hold" && visibleZone !== "list") return "Scroll to your Goals list, then complete your first goal.";
-    if (step === "goal-chart" && visibleZone !== "chart") return "Scroll to the chart, then tap the highlighted point.";
-    return null;
+  function cancelPendingAction() {
+    setConfirmAction(null);
   }
 
-  const prompt = bottomPrompt();
-  const coach = tutorialCoach(step, visibleZone);
+  function openIntensityEditor(kind: "good" | "bad", id: string, holdUC?: number, soldUC?: number) {
+    setIntensityEditor((current) =>
+      current?.kind === kind && current.id === id
+        ? null
+        : { kind, id, index: getIntensityIndexFromValues(holdUC, soldUC) }
+    );
+  }
+
+  function saveIntensityEditor() {
+    if (!intensityEditor) return;
+    const next = getIntensityByIndex(intensityEditor.index);
+
+    if (intensityEditor.kind === "good") {
+      updateStoreAndSave((s) => ({
+        ...s,
+        goodHabits: s.goodHabits.map((habit) =>
+          habit.id === intensityEditor.id ? { ...habit, holdUC: next.hold, soldUC: next.sold } : habit
+        ),
+      }));
+    }
+
+    if (intensityEditor.kind === "bad") {
+      updateStoreAndSave((s) => ({
+        ...s,
+        badHabits: s.badHabits.map((habit) =>
+          habit.id === intensityEditor.id ? { ...habit, holdUC: next.hold, soldUC: next.sold } : habit
+        ),
+      }));
+    }
+
+    setIntensityEditor(null);
+  }
+
+  function applyAddictionSold(addiction: Addiction) {
+    const state = addictionChargeMap.get(addiction.id) ?? getAddictionChargeState(addiction.title, store.tx, Date.now());
+    applyDelta("addiction", getAddictionSoldLabel(addiction.title), -state.currentCharge);
+  }
+
+  function resetAddictionCharges(addiction: Addiction) {
+    applyDelta("addiction", getAddictionResetLabel(addiction.title), 0);
+  }
 
   return (
     <div className={styles.page}>
       {!introDone ? (
         <div className={styles.introOverlay} aria-hidden="true">
           <div className={styles.introLogo}>
-            <span className={styles.introLeft}>&gt;---</span>
-            <span className={styles.introName}>You Inc.</span>
-            <span className={styles.introRight}>---&lt;</span>
+            <span className={styles.introLeft}>&lt;&lt;&lt;</span>
+            <span className={styles.introName}>You Inc</span>
+            <span className={styles.introRight}>&gt;&gt;&gt;</span>
           </div>
         </div>
       ) : null}
-
       <div className={styles.glowA} />
       <div className={styles.glowB} />
       <div className={styles.glowC} />
 
       <div className={styles.shell}>
+        {logFlash ? (
+          <div key={logFlash.id} className={styles.logFlash} role="status" aria-live="polite">
+            <span className={styles.logFlashDot}>✓</span>
+            <span>{logFlash.text}</span>
+          </div>
+        ) : null}
+
+        {showGoalCelebration ? (
+          <div className={styles.goalCelebration} aria-hidden="true">
+            {Array.from({ length: 18 }).map((_, i) => <span key={i} style={{ "--i": i } as React.CSSProperties} />)}
+            <div className={styles.goalBurst}>+400 UC Goal Completed!</div>
+          </div>
+        ) : null}
+
+        <GuestCoach
+          step={guestStep}
+          onNext={(next) => {
+            if (next === "lineMode") scrollToGuest(chartAreaRef);
+            if (next === "buyOpen") scrollToGuest(chartAreaRef);
+            if (next === "logsExplain") scrollToGuest(detailsAreaRef);
+            if (next === "badTab") window.scrollTo({ top: 0, behavior: "smooth" });
+            if (next === "goalsTab") window.scrollTo({ top: 0, behavior: "smooth" });
+            advanceGuest(next);
+          }}
+          onCreateAccount={() => router.push("/register")}
+        />
+
+        {confirmAction ? (
+          <div className={styles.confirmOverlay} role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <div className={styles.confirmBox}>
+              <div className={styles.confirmKicker}>Confirm action</div>
+              <h2 id="confirm-title" className={styles.confirmTitle}>
+                {confirmAction.type === "switchAccount" ? "Switch account?" : "Delete this entry?"}
+              </h2>
+              <p className={styles.confirmText}>
+                {confirmAction.type === "switchAccount"
+                  ? "You’ll leave this account and go back to login."
+                  : `This will remove “${confirmAction.title}” from ${SECTION_TITLES[confirmAction.kind].toLowerCase()}.`}
+              </p>
+              <div className={styles.confirmActions}>
+                <button className={styles.ghostBtn} onClick={cancelPendingAction} type="button">
+                  Cancel
+                </button>
+                <button
+                  className={confirmAction.type === "deleteItem" ? styles.confirmDangerBtn : styles.primaryBtn}
+                  onClick={confirmPendingAction}
+                  type="button"
+                >
+                  {confirmAction.type === "switchAccount" ? "Switch account" : "Delete"}
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         <header className={styles.header}>
           <div className={styles.brand}>
             <div className={styles.logo} />
             <div className={styles.brandText}>
               <div className={styles.eyebrow}>You Inc.</div>
-              <div className={styles.title}>This is your first chart.</div>
-              <div className={styles.subTitle}>Every honest action moves the price of you.</div>
+              <div className={styles.title}>{user?.displayName ?? user?.email?.split("@")[0] ?? "You"}</div>
+              <div className={styles.subTitle}>Your behaviour dashboard, priced like a market.</div>
             </div>
           </div>
+
           <div className={styles.headerActions}>
-            <a className={styles.secondaryBtn} href="/login">Login</a>
-          </div>
+  <button
+    className={styles.secondaryBtn}
+    onClick={() => router.push("/register")}
+    type="button"
+  >
+    Create account
+  </button>
+</div>
         </header>
+
+        {storeError ? <div className={styles.syncWarning}>{storeError}</div> : null}
 
         <section className={styles.heroCard}>
           <div className={styles.heroCopy}>
-            <div className={styles.heroTitle}>Start where you are. Log what you do. Watch the signal change.</div>
-            <div className={styles.heroText}>This is a guided first run. Treat it like your own account: add habits, log honest wins and slips, then decide whether you want to keep your chart going.</div>
+            <div className={styles.heroText}>
+              Good actions push the chart up, relapses and drift pull it down. Keep the loop tight and the feedback obvious.
+            </div>
           </div>
-          <div ref={tabsRef} className={styles.heroStats} aria-label="Choose what you want to add">
-            {SECTION_ORDER.map((key) => {
-              const pulse =
-                (key === "good" && step === "good-tab") ||
-                (key === "bad" && (step === "bad-tab" || step === "bad-reach")) ||
-                (key === "goals" && step === "goals-tab");
+
+          <div className={styles.heroStats}>
+            {dashboardStats.map((item) => {
+              const toneClass =
+                item.tone === "positive"
+                  ? styles.heroStat_positive
+                  : item.tone === "warning"
+                  ? styles.heroStat_warning
+                  : item.tone === "danger"
+                  ? styles.heroStat_danger
+                  : "";
 
               return (
                 <button
-                  key={key}
+                  key={item.key}
                   type="button"
-                  className={`${styles.heroStat} ${tab === key ? styles.heroStatActive : ""} ${pulse ? styles.guestPulse : ""}`}
-                  onClick={() => handleTabClick(key)}
-                  aria-pressed={tab === key}
+                  className={`${styles.heroStat} ${toneClass} ${tab === item.key ? styles.heroStatActive : ""} ${item.key === "good" ? pulseClass("goodTab") : ""} ${item.key === "bad" ? pulseClass("badTab") : ""} ${item.key === "goals" ? pulseClass("goalsTab") : ""}`}
+                  onClick={() => switchTab(item.key)}
+                  aria-pressed={tab === item.key}
+                  aria-label={`Show ${item.label}`}
                 >
-                  <span>{key === "good" ? "Good" : key === "bad" ? "Bad" : SECTION_TITLES[key]}</span>
-                  <strong>{items[key].length}</strong>
-                  <small>{tab === key ? "Selected" : "Tap to select"}</small>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                  <small>{tab === item.key ? "Selected" : "Tap to select"}</small>
                 </button>
               );
             })}
@@ -432,424 +1042,1369 @@ export default function GuestPage() {
         </section>
 
         <div className={styles.guestAddEntryRow}>
-          <button className={`${styles.addBtn} ${activeAddHighlight()}`} onClick={() => openEntry(tab)} type="button" aria-label={`Add entry to ${SECTION_TITLES[tab]}`}>
+            <button
+            className={`${styles.addBtn} ${pulseClass("addGood", "addBad", "addGoal")}`}
+            onClick={() => {
+              openModal();
+              if (guestStep === "addGood") advanceGuest("goodText");
+              if (guestStep === "addBad") advanceGuest("submitBad");
+              if (guestStep === "addGoal") advanceGuest("submitGoal");
+            }}
+            type="button"
+          >
             <span className={styles.addPlus}>＋</span>
             Add entry
           </button>
         </div>
 
-        <section ref={listRef} className={styles.panel}>
+        <section className={styles.panel}>
           <div className={styles.panelHeader}>
+            <button
+              className={styles.iconBtn}
+              onClick={() => stepSection(-1)}
+              type="button"
+              aria-label="Previous section"
+              disabled={currentSectionIndex === 0}
+            >
+              {"<"}
+            </button>
+
             <div className={styles.panelHeaderCopy}>
-              <div className={styles.panelHeaderTitle}>{SECTION_TITLES[tab]}</div>
-              <div className={styles.panelHeaderText}>{SECTION_SUBTITLES[tab]}</div>
+              <div className={styles.panelHeaderTitle}>{currentSectionTitle}</div>
+              <div className={styles.panelHeaderText}>{currentSectionSubtitle}</div>
+            </div>
+
+            <button
+              className={styles.iconBtn}
+              onClick={() => stepSection(1)}
+              type="button"
+              aria-label="Next section"
+              disabled={currentSectionIndex === SECTION_ORDER.length - 1}
+            >
+              {">"}
+            </button>
+          </div>
+
+<div
+  ref={sectionScrollerRef}
+  onScroll={handleSectionScroll}
+  className={styles.sectionScroller}
+>
+
+            <div className={styles.section} hidden={tab !== "goals"}>
+              <div className={styles.list}>
+                {store.goals.length === 0 ? (
+                  <EmptyState text="No goals yet. Add one and give it an expiry date." />
+                ) : (
+                  store.goals.map((g) => (
+                    <div key={g.id} className={styles.card}>
+                      <div className={styles.cardMain}>
+                        <div className={styles.cardTitle}>{g.title}</div>
+                        <div className={styles.metaRow}>
+                          <span className={styles.metaPill}>Expiry: {g.expiry}</span>
+                        </div>
+                      </div>
+                      <div className={styles.cardActions}>
+                        <button
+                          className={styles.actionPrimary}
+                          onClick={() => { applyDelta("goal", `${g.title} (Goal · Complete)`, +400); if (guestStep === "completeGoal") { setShowGoalCelebration(true); setTimeout(() => { setShowGoalCelebration(false); advanceGuest("signup"); }, 1200); } }}
+                          type="button"
+                        >
+                          Complete <span className={styles.delta}>+400 UC</span>
+                        </button>
+                        <button
+                          className={styles.actionDanger}
+                          onClick={() => applyDelta("goal", `${g.title} (Goal · Failed)`, -200)}
+                          type="button"
+                        >
+                          Failed <span className={styles.delta}>-200 UC</span>
+                        </button>
+                        <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("goals", g.id, g.title)} title="Remove" type="button" aria-label="Remove goal">
+                          <TrashIcon />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className={styles.section} hidden={tab !== "good"}>
+              <div className={styles.list}>
+                {store.goodHabits.length === 0 ? (
+                  <EmptyState text="No good habits yet. Add a habit and choose frequency." />
+                ) : (
+                  store.goodHabits.map((h) => (
+                    <div key={h.id} className={styles.card}>
+                      <div className={styles.cardMain}>
+                        <div className={styles.cardTitle}>{h.title}</div>
+                        <div className={styles.metaRow}>
+                          <span className={styles.metaPill}>
+                            {h.frequencyMode === "daily" ? "Every day" : `Days: ${h.daysOfWeek.map(formatDow).join(", ")}`}
+                          </span>
+                          {h.notes ? <span className={styles.metaNote}>{h.notes}</span> : null}
+                        </div>
+                      </div>
+                      <div className={styles.cardControlStack}>
+                        <div className={styles.cardActions}>
+                          <button
+                            className={`${styles.actionPrimary} ${pulseClass("holdGood")}`}
+                            onClick={() => { applyDelta("good", `${h.title} (Good habit · Hold)`, +(h.holdUC ?? 100)); if (guestStep === "holdGood") { advanceGuest("scrollChart"); scrollToGuest(chartAreaRef); } }}
+                            type="button"
+                          >
+                            Hold <span className={styles.delta}>+{getPreviewDelta("good", h.holdUC ?? 100)} UC</span>
+                          </button>
+                          <button
+                            className={styles.actionDanger}
+                            onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -(h.soldUC ?? 50))}
+                            type="button"
+                          >
+                            Sold <span className={styles.delta}>-{h.soldUC ?? 50} UC</span>
+                          </button>
+                          <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("good", h.id, h.title)} title="Remove" type="button" aria-label="Remove good habit">
+                            <TrashIcon />
+                          </button>
+                        </div>
+
+                        <button
+                          className={styles.adjustIntensityBtn}
+                          onClick={() => openIntensityEditor("good", h.id, h.holdUC, h.soldUC)}
+                          type="button"
+                        >
+                          Adjust intensity
+                        </button>
+
+                        {intensityEditor?.kind === "good" && intensityEditor.id === h.id ? (
+                          <div className={styles.intensityDropdown}>
+                            <div className={styles.previewActions}>
+                              <span className={styles.previewHold}>Hold +{getIntensityByIndex(intensityEditor.index).hold}</span>
+                              <span className={styles.previewSold}>Sold -{getIntensityByIndex(intensityEditor.index).sold}</span>
+                            </div>
+                            <input
+                              className={styles.intensitySlider}
+                              type="range"
+                              min="0"
+                              max={INTENSITY_OPTIONS.length - 1}
+                              step="1"
+                              value={intensityEditor.index}
+                              onChange={(e) => setIntensityEditor({ ...intensityEditor, index: Number(e.target.value) })}
+                            />
+                            <div className={styles.intensitySaveRow}>
+                              <button className={styles.ghostBtn} onClick={() => setIntensityEditor(null)} type="button">
+                                Cancel
+                              </button>
+                              <button className={styles.primaryBtn} onClick={saveIntensityEditor} type="button">
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className={styles.section} hidden={tab !== "bad"}>
+              <div className={styles.list}>
+                {store.badHabits.length === 0 ? (
+                  <EmptyState text="No bad habits yet. Add one and choose its intensity." />
+                ) : (
+                  store.badHabits.map((b) => (
+                    <div key={b.id} className={styles.card}>
+                      <div className={styles.cardMain}>
+                        <div className={styles.cardTitle}>{b.title}</div>
+                        <div className={styles.metaRow}>
+                          {b.notes ? <span className={styles.metaNote}>{b.notes}</span> : null}
+                        </div>
+                      </div>
+                      <div className={styles.cardControlStack}>
+                        <div className={styles.cardActions}>
+                          <button
+                            className={styles.actionPrimary}
+                            onClick={() => applyDelta("bad", `${b.title} (Bad habit · Hold)`, +(b.holdUC ?? 100))}
+                            type="button"
+                          >
+                            Hold <span className={styles.delta}>+{getPreviewDelta("bad", b.holdUC ?? 100)} UC</span>
+                          </button>
+                          <button
+                            className={`${styles.actionDanger} ${pulseClass("soldBad")}`}
+                            onClick={() => { applyDelta("bad", `${b.title} (Bad habit · Sold)`, -(b.soldUC ?? 50)); if (guestStep === "soldBad") advanceGuest("honesty"); }}
+                            type="button"
+                          >
+                            Sold <span className={styles.delta}>-{b.soldUC ?? 50} UC</span>
+                          </button>
+                          <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("bad", b.id, b.title)} title="Remove" type="button" aria-label="Remove bad habit">
+                            <TrashIcon />
+                          </button>
+                        </div>
+
+                        <button
+                          className={styles.adjustIntensityBtn}
+                          onClick={() => openIntensityEditor("bad", b.id, b.holdUC, b.soldUC)}
+                          type="button"
+                        >
+                          Adjust intensity
+                        </button>
+
+                        {intensityEditor?.kind === "bad" && intensityEditor.id === b.id ? (
+                          <div className={styles.intensityDropdown}>
+                            <div className={styles.previewActions}>
+                              <span className={styles.previewHold}>Hold +{getIntensityByIndex(intensityEditor.index).hold}</span>
+                              <span className={styles.previewSold}>Sold -{getIntensityByIndex(intensityEditor.index).sold}</span>
+                            </div>
+                            <input
+                              className={styles.intensitySlider}
+                              type="range"
+                              min="0"
+                              max={INTENSITY_OPTIONS.length - 1}
+                              step="1"
+                              value={intensityEditor.index}
+                              onChange={(e) => setIntensityEditor({ ...intensityEditor, index: Number(e.target.value) })}
+                            />
+                            <div className={styles.intensitySaveRow}>
+                              <button className={styles.ghostBtn} onClick={() => setIntensityEditor(null)} type="button">
+                                Cancel
+                              </button>
+                              <button className={styles.primaryBtn} onClick={saveIntensityEditor} type="button">
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div className={styles.section} hidden={tab !== "addictions"}>
+              <div className={styles.list}>
+                {store.addictions.length === 0 ? (
+                  <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
+                ) : (
+                  store.addictions.map((a) => {
+                    const chargeState = addictionChargeMap.get(a.id) ?? getAddictionChargeState(a.title, store.tx, Date.now());
+                    const soldPenalty = Math.abs(getPreviewDelta("addiction", -chargeState.currentCharge));
+                    const resetEnabled = chargeState.currentCharge > ADDICTION_BASE_CHARGE || chargeState.lastSoldTs !== null;
+                    const reductionText =
+                      chargeState.nextReductionAt && chargeState.nextReductionCharge !== null
+                        ? `Next reduction in ${formatDurationShort(chargeState.nextReductionAt - Date.now())} → -${chargeState.nextReductionCharge} UC`
+                        : "Base penalty active";
+
+                    return (
+                      <div key={a.id} className={styles.card}>
+                        <div className={styles.cardMain}>
+                          <div className={styles.cardTitle}>{a.title}</div>
+                          <div className={styles.metaRow}>
+                            <span className={styles.metaPill}>No expiry</span>
+                            <span className={styles.metaPill}>Current sold: -{soldPenalty} UC</span>
+                            <span className={styles.metaPill}>{reductionText}</span>
+                            {chargeState.reachedMax ? <span className={styles.metaPill}>Max escalation</span> : null}
+                          </div>
+                        </div>
+                        <div className={styles.cardActions}>
+                          <button
+                            className={styles.actionPrimary}
+                            onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200)}
+                            type="button"
+                          >
+                            Hold <span className={styles.delta}>+{getPreviewDelta("addiction", 200)} UC</span>
+                          </button>
+                          <button
+                            className={styles.actionDanger}
+                            onClick={() => applyAddictionSold(a)}
+                            type="button"
+                          >
+                            Sold <span className={styles.delta}>-{soldPenalty} UC</span>
+                          </button>
+                          <button
+                            className={styles.ghostBtn}
+                            onClick={() => resetAddictionCharges(a)}
+                            type="button"
+                            disabled={!resetEnabled}
+                            title="Reset escalation back to base penalty"
+                          >
+                            Reset charges
+                          </button>
+                          <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("addictions", a.id, a.title)} title="Remove" type="button" aria-label="Remove addiction">
+                            <TrashIcon />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
-
-          <div className={styles.list}>
-            {items[tab].length === 0 ? (
-              <EmptyState text={emptyText(tab, step)} />
-            ) : (
-              items[tab].map((item) => (
-                <DemoCard
-                  key={item.id}
-                  item={item}
-                  tab={tab}
-                  holdHighlight={(tab === "good" && step === "hold") || (tab === "goals" && step === "goal-hold")}
-                  soldHighlight={tab === "bad" && step === "bad-sold"}
-                  onGoodHold={() => holdGood(item)}
-                  onBadSold={() => soldBad(item)}
-                  onGoalHold={() => holdGoal(item)}
-                />
-              ))
-            )}
-          </div>
         </section>
 
-        <section ref={chartRef} className={styles.chartIntro}>
-          <div>
-            <div className={styles.chartIntroTitle}>Your chart</div>
-            <div className={styles.chartIntroText}>Your choices turn into price movement. Green is progress. Red is feedback.</div>
+        {/* CHART BELOW PANEL */}
+        <section className={styles.topStats} ref={chartAreaRef}>
+          <div className={styles.statBlock}>
+            <div className={styles.statLabel}>Market Cap (Total Credits)</div>
+            <div className={styles.statValue}>{store.marketCapUC.toLocaleString()} UC</div>
           </div>
+
+          <div className={styles.statBlock}>
+  <div className={styles.statLabel}>Price</div>
+
+  <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+    <div className={styles.statValue}>U${price.toFixed(3)}</div>
+
+    <span
+      className={styles.metaPill}
+      style={{
+        borderColor: tfChangeIsUp ? "rgba(16,185,129,0.35)" : "rgba(244,63,94,0.35)",
+        color: tfChangeIsUp ? "rgba(167,243,208,1)" : "rgba(253,164,175,1)",
+        background: tfChangeIsUp ? "rgba(16,185,129,0.12)" : "rgba(244,63,94,0.12)",
+      }}
+      title={`Change over ${tf.toUpperCase()}`}
+    >
+      {tfChangeLabel}
+    </span>
+  </div>
+</div>
+
           <div className={styles.tfRow}>
-            <button className={`${styles.actionPrimary} ${isHighlight("buy-open")}`} onClick={openBuy} type="button">BUY <span className={styles.delta}>+25 UC</span></button>
-            {(["1d", "3d", "1w", "1m"] as Timeframe[]).map((key) => (
-              <button
-                key={key}
-                className={`${styles.tfBtn} ${tf === key ? styles.tfBtnOn : ""} ${step === "tf-info" && !tfTouched ? styles.guestPulse : ""}`}
-                onClick={() => {
-                  setTf(key);
-                  if (step === "tf-info") setTfTouched(true);
-                }}
-                type="button"
-              >
-                {key.toUpperCase()}
-              </button>
-            ))}
+            {/* BUY */}
+            <button
+              className={`${styles.actionPrimary} ${pulseClass("buyOpen")}`}
+              type="button"
+              onClick={() => { setIsBuyOpen((v) => !v); if (guestStep === "buyOpen") { setBuyActivity("5 push ups"); advanceGuest("buyComplete"); } }}
+              title="Log a one-off productive activity"
+            >
+              BUY <span className={styles.delta}>+25 UC</span>
+            </button>
+
+            {/* TF buttons */}
+            <button className={`${styles.tfBtn} ${tf === "1d" ? styles.tfBtnOn : ""} ${pulseClass("timeframes")}`} onClick={() => setTf("1d")} type="button">
+              1D
+            </button>
+            <button className={`${styles.tfBtn} ${tf === "3d" ? styles.tfBtnOn : ""} ${pulseClass("timeframes")}`} onClick={() => setTf("3d")} type="button">
+              3D
+            </button>
+            <button className={`${styles.tfBtn} ${tf === "1w" ? styles.tfBtnOn : ""} ${pulseClass("timeframes")}`} onClick={() => setTf("1w")} type="button">
+              1W
+            </button>
+            <button className={`${styles.tfBtn} ${tf === "1m" ? styles.tfBtnOn : ""} ${pulseClass("timeframes")}`} onClick={() => setTf("1m")} type="button">
+              1M
+            </button>
           </div>
         </section>
 
-        {step === "chart-day" && visibleZone === "chart" ? (
-          <GuideBox title="One point = one day" text="This view shows daily movement, so you can see how today changed your price." button="OK" pulseButton onClick={() => setStep("tf-info")} />
-        ) : null}
-
-        {step === "tf-info" && visibleZone === "chart" ? (
-          <GuideBox title="Change the view" text="Tap 1D, 3D, 1W, or 1M to see your progress over different periods." button="OK" pulseButton={tfTouched} onClick={() => { if (tfTouched) setStep("buy-open"); }} />
-        ) : null}
-
-        {isBuyOpen ? (
+        {isBuyOpen && (
           <div className={styles.helperBox} style={{ marginBottom: 12 }}>
             <div className={styles.helperTitle}>Open a position</div>
-            <div className={styles.helperText}>A quick action you can do right now. Tiny wins still move the chart.</div>
+            <div className={styles.helperText}>Log a one-off productive activity (not a habit yet).</div>
+
             <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
-              <input className={styles.input} value={buyActivity} onChange={(e) => setBuyActivity(e.target.value)} style={{ marginTop: 0, flex: "1 1 260px" }} />
-              <button className={`${styles.primaryBtn} ${isHighlight("buy-complete")}`} type="button" onClick={completeBuy}>Completed <span className={styles.delta}>+25 UC</span></button>
+              <input
+                className={styles.input}
+                value={buyActivity}
+                onChange={(e) => setBuyActivity(e.target.value)}
+                placeholder="Activity e.g. Running, Camping, Meditation"
+                style={{ marginTop: 0, flex: "1 1 260px" }}
+              />
+
+              <button className={`${styles.primaryBtn} ${pulseClass("buyComplete")}`} type="button" onClick={() => { submitBuyActivity(); if (guestStep === "buyComplete") advanceGuest("tapChart"); }} disabled={!buyActivity.trim()}>
+                Completed <span className={styles.delta}>+25 UC</span>
+              </button>
+
+              <button className={styles.ghostBtn} type="button" onClick={() => setIsBuyOpen(false)}>
+                Close
+              </button>
             </div>
           </div>
-        ) : null}
+        )}
 
-        <MiniCandleChart candles={candles} selected={selected} latest={latestCandle} shouldPulse={step === "tap-candle" || step === "goal-chart"} pointerText="👇" onSelect={selectCandle} />
+<div ref={detailsAreaRef}><CandleChart data={candles} tx={store.tx} timeframe={tf} guestStep={guestStep} onGuestStep={advanceGuest} /></div>
 
-        {step === "tap-candle" && visibleZone === "chart" ? (
-          <GuideBox title="Tap the point first" text="👇 Tap the highlighted point on the chart." button="Tap the point" onClick={() => undefined} />
-        ) : null}
 
-        {showGoalMessage && step === "goal-chart" && visibleZone === "chart" ? (
-          <GuideBox title="Completing goals boosts your chart." text="👇 Tap the highlighted point to see what changed." button="Tap the point" onClick={() => undefined} />
-        ) : null}
-
-        <section ref={detailsRef} className={`${styles.detailsPanel} ${styles.detailsPanelOpen}`}>
-          <div className={styles.detailsHeader}>
-            <div>
-              <div className={styles.detailsTitle}>Progress breakdown</div>
-              <div className={styles.detailsRange}>{selected ? new Date(selected.t).toLocaleString() : "Tap the chart to inspect a point."}</div>
-            </div>
-            {(step === "details" || step === "goal-details") ? <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={continueAfterBreakdown} type="button">Got it</button> : null}
-          </div>
-
-          <div className={styles.detailsBody}>
-            {step === "details" ? (
-              <div className={styles.guestInlineTip}>View your logs for the chosen {selectedPeriodLabel} and the percentage change from the previous {selectedPeriodLabel}. Then tap Got it.</div>
-            ) : null}
-            {step === "goal-details" ? (
-              <div className={styles.guestInlineTip}>This is your Progress Breakdown. It shows what you logged, how your price changed, and why consistency matters. The key is not being perfect — it is being honest enough to keep the signal real.</div>
-            ) : null}
-            <div className={styles.guestPerformanceBox}>
-              <div>
-                <span>Price</span>
-                <strong>{selected ? formatMoney(selected.c) : "—"}</strong>
-              </div>
-              <div>
-                <span>{selected ? (isSelectedUp ? "Up" : "Down") : "Change"}</span>
-                <strong className={selected ? (isSelectedUp ? styles.txPositive : styles.txNegative) : ""}>
-                  {selected && previous ? `${isSelectedUp ? "+" : ""}${formatMoney(Math.abs(selectedMove))}` : "—"}
-                </strong>
-              </div>
-              <div>
-                <span>From previous {periodWord(tf)}</span>
-                <strong className={selected ? (isSelectedUp ? styles.txPositive : styles.txNegative) : ""}>
-                  {selected && previous ? `${selectedPct >= 0 ? "+" : ""}${selectedPct.toFixed(2)}%` : "—"}
-                </strong>
-              </div>
-            </div>
-
-            <div className={styles.txList}>
-              {(selected?.tx.length ? selected.tx : tx.slice(0, 4)).map((entry) => (
-                <div key={entry.id} className={styles.txItem}>
-                  <div><div className={styles.txTitle}>{entry.label}</div><div className={styles.txTime}>{new Date(entry.ts).toLocaleTimeString()}</div></div>
-                  <div className={`${styles.txDelta} ${entry.deltaUC >= 0 ? styles.txPositive : styles.txNegative}`}>{entry.deltaUC > 0 ? "+" : ""}{entry.deltaUC} UC</div>
-                </div>
-              ))}
-              {!tx.length ? <div className={styles.emptyTx}>Your logged actions will appear here.</div> : null}
-            </div>
-          </div>
-        </section>
-
-        {showBadPopup ? (
-          <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-            <div className={styles.modal}>
-              <div className={styles.modalHeader}><div className={styles.modalTitle}>Honesty keeps the chart real.</div></div>
-              <div className={styles.modalBody}>
-                <div className={styles.helperText} style={{ fontSize: 15, lineHeight: 1.7 }}>
-                  Some days your discipline slips, and that is okay. The point is not to pretend. Log it, learn from it, and keep moving.
-                </div>
-              </div>
-              <div className={styles.modalFooter}>
-                <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={closeBadPopup} type="button">Close</button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {step === "final" ? (
-          <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-            <div className={styles.modal}>
-              <div className={styles.modalHeader}><div className={styles.modalTitle}>Ready to keep the chart going?</div></div>
-              <div className={styles.modalBody}>
-                <div className={styles.helperText} style={{ fontSize: 15, lineHeight: 1.7 }}>
-                  You have seen the loop: log honestly, watch the signal change, and build momentum one day at a time. Create your account and keep your chart alive.
-                </div>
-              </div>
-              <div className={styles.modalFooter}>
-                <button className={`${styles.primaryBtn} ${styles.guestPulse}`} onClick={() => router.push("/register")} type="button">Create my account</button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
-        {isModalOpen ? (
+        {/* MODAL */}
+        {isModalOpen && (
           <div className={styles.modalOverlay} role="dialog" aria-modal="true">
             <div className={styles.modal}>
               <div className={styles.modalHeader}>
-                <div className={styles.modalTitle}>Add {SECTION_TITLES[modalKind].slice(0, -1)}</div>
-                <button className={styles.iconBtn} onClick={() => setIsModalOpen(false)} aria-label="Close modal" type="button">✕</button>
+                <div className={styles.modalTitle}>{modalTitle}</div>
+                <button className={styles.iconBtn} onClick={closeModal} aria-label="Close modal" type="button">
+                  ✕
+                </button>
               </div>
-              <div className={styles.modalBody}>
-                <div className={styles.form}>
-                  <label className={styles.label}>{modalKind === "goals" ? "Goal" : modalKind === "bad" ? "Bad habit" : "Habit"}<input className={styles.input} value={entryTitle} onChange={(e) => setEntryTitle(e.target.value)} /></label>
-                  <div className={styles.row2}>
-                    <label className={styles.label}>Type<input className={styles.input} value={SECTION_TITLES[modalKind]} readOnly /></label>
-                    <label className={styles.label}>Notes<input className={styles.input} value={modalKind === "bad" ? "honesty beats hiding" : modalKind === "goals" ? "make progress visible" : "tracking habits is also a habit"} readOnly /></label>
-                  </div>
 
-                  {(modalKind === "good" || modalKind === "bad") ? (
-                    <div className={styles.intensityBox}>
-                      <div className={styles.helperTitle}>Adjust intensity</div>
-                      <div className={styles.helperText}>
-                        Smaller habits do not need the same reward as massive habits. Set the reward and penalty to what feels fair.
-                      </div>
+              <div className={styles.modalBody}>
+                {tab === "goals" && (
+                  <div className={styles.form}>
+                    <label className={styles.label}>
+                      Goal
+                      <input className={`${styles.input} ${pulseClass("submitGoal")}`} value={goalTitle} onChange={(e) => setGoalTitle(e.target.value)} autoFocus />
+                    </label>
+
+                    <label className={styles.label}>
+                      Expiry date
+                      <input className={styles.input} type="date" value={goalExpiry} onChange={(e) => setGoalExpiry(e.target.value)} />
+                    </label>
+                  </div>
+                )}
+
+                {tab === "good" && (
+                  <div className={styles.form}>
+                    <label className={styles.label}>
+                      Habit
+                      <input className={`${styles.input} ${pulseClass("goodText")}`} value={goodTitle} onChange={(e) => setGoodTitle(e.target.value)} autoFocus />
+                    </label>
+
+                    <div className={styles.row2}>
+                      <label className={styles.label}>
+                        Frequency
+                        <select className={styles.input} value={goodFrequencyMode} onChange={(e) => setGoodFrequencyMode(e.target.value as any)}>
+                          <option value="daily">Every day</option>
+                          <option value="weekly">Pick days</option>
+                        </select>
+                      </label>
+
+                      <label className={styles.label}>
+                        Notes
+                        <input className={styles.input} value={goodNotes} onChange={(e) => setGoodNotes(e.target.value)} placeholder="optional" />
+                      </label>
+                    </div>
+
+                    <div className={`${styles.intensityBox} ${pulseClass("goodIntensity")}`}>
                       <div className={styles.previewActions}>
-                        <span className={styles.previewHold}>Hold <span className={styles.delta}>+{INTENSITY_LEVELS[modalIntensityIndex].hold} UC</span></span>
-                        <span className={styles.previewSold}>Sold <span className={styles.delta}>{INTENSITY_LEVELS[modalIntensityIndex].sold} UC</span></span>
+                        <span className={styles.previewHold}>Hold +{goodIntensity.hold}</span>
+                        <span className={styles.previewSold}>Sold -{goodIntensity.sold}</span>
                       </div>
                       <label className={styles.intensityLabel}>
-                        Reward level: +{INTENSITY_LEVELS[modalIntensityIndex].hold} / {INTENSITY_LEVELS[modalIntensityIndex].sold} UC
+                        <span>Adjust intensity</span>
                         <input
-                          className={`${styles.intensitySlider} ${step === "modal-add" && modalKind === "good" && modalIntensityIndex !== 1 ? styles.guestPulse : ""}`}
+                          className={styles.intensitySlider}
                           type="range"
                           min="0"
-                          max={INTENSITY_LEVELS.length - 1}
+                          max={INTENSITY_OPTIONS.length - 1}
                           step="1"
-                          value={modalIntensityIndex}
-                          onChange={(e) => setModalIntensityIndex(Number(e.target.value))}
+                          value={goodIntensityIndex}
+                          onChange={(e) => { setGoodIntensityIndex(Number(e.target.value)); if (guestStep === "goodIntensity" && Number(e.target.value) === 1) advanceGuest("submitGood"); }}
                         />
                       </label>
                     </div>
-                  ) : null}
-                </div>
+
+                    {goodFrequencyMode === "weekly" && (
+                      <div className={styles.dowRow}>
+                        {[0, 1, 2, 3, 4, 5, 6].map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            className={`${styles.dowPill} ${goodDays.includes(d) ? styles.dowPillOn : ""}`}
+                            onClick={() => toggleDow(d)}
+                          >
+                            {formatDow(d)}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {tab === "bad" && (
+                  <div className={styles.form}>
+                    <label className={styles.label}>
+                      Bad Habit
+                      <input className={`${styles.input} ${pulseClass("submitBad")}`} value={badTitle} onChange={(e) => setBadTitle(e.target.value)} autoFocus />
+                    </label>
+
+                    <label className={styles.label}>
+                      Notes
+                      <input className={styles.input} value={badNotes} onChange={(e) => setBadNotes(e.target.value)} placeholder="optional" />
+                    </label>
+
+                    <div className={styles.intensityBox}>
+                      <div className={styles.previewActions}>
+                        <span className={styles.previewHold}>Hold +{badIntensity.hold}</span>
+                        <span className={styles.previewSold}>Sold -{badIntensity.sold}</span>
+                      </div>
+                      <label className={styles.intensityLabel}>
+                        <span>Adjust intensity</span>
+                        <input
+                          className={styles.intensitySlider}
+                          type="range"
+                          min="0"
+                          max={INTENSITY_OPTIONS.length - 1}
+                          step="1"
+                          value={badIntensityIndex}
+                          onChange={(e) => setBadIntensityIndex(Number(e.target.value))}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {tab === "addictions" && (
+                  <div className={styles.form}>
+                    <label className={styles.label}>
+                      Addiction
+                      <input className={styles.input} value={addictionTitle} onChange={(e) => setAddictionTitle(e.target.value)} autoFocus />
+                    </label>
+
+                    <div className={styles.helperBox}>
+                      <div className={styles.helperTitle}>No expiry</div>
+                      <div className={styles.helperText}>Tracked continuously. “Hold” = clean day. “Sold” = relapse.</div>
+                    </div>
+                  </div>
+                )}
               </div>
+
               <div className={styles.modalFooter}>
-                <button className={styles.ghostBtn} onClick={() => setIsModalOpen(false)} type="button">Cancel</button>
-                <button
-                  className={`${styles.primaryBtn} ${(
-                    (step === "modal-add" && modalKind === "good" && modalIntensityIndex === 1) ||
-                    step === "bad-modal-add" ||
-                    step === "goal-modal-add"
-                  ) ? styles.guestPulse : ""}`}
-                  onClick={addEntry}
-                  disabled={!entryTitle.trim()}
-                  type="button"
-                >Add</button>
+                <button className={styles.ghostBtn} onClick={closeModal} type="button">
+                  Cancel
+                </button>
+                <button className={`${styles.primaryBtn} ${pulseClass("submitGood", "submitBad", "submitGoal")}`} onClick={submit} disabled={!canSubmit()} type="button">
+                  Add
+                </button>
               </div>
             </div>
           </div>
-        ) : null}
-
-        {coach ? <TutorialCoach title={coach.title} text={coach.text} low={step === "modal-add"} /> : null}
-        {prompt ? <div className={styles.guestBottomBar}>{prompt}</div> : null}
-        {logFlash ? <div className={styles.logFlash}><span className={styles.logFlashDot}>✓</span>{logFlash}</div> : null}
-        {celebrate ? <GoalCelebration /> : null}
-      </div>
-    </div>
-  );
-}
-
-function tutorialCoach(step: Step, visibleZone: "top" | "list" | "chart" | "details") {
-  if (step === "bad-modal-add" || step === "goal-modal-add" || step === "bad-popup" || step === "final") return null;
-  if (step === "good-tab") return { title: "Your first signal starts here", text: "Tap the Good card. Start with one small action you want to repeat." };
-  if (step === "add-entry") return { title: "Name the habit", text: "Tap Add entry. I already filled it in so you can feel the flow, not fight the form." };
-  if (step === "modal-add") return { title: "Set the intensity", text: "Some habits are easier or smaller. Drag the reward level to +20 / -10 UC, then tap Add." };
-  if (step === "hold") return { title: "Log the win", text: "Scroll to the habit and tap Hold. That tells your chart you showed up today." };
-  if (step === "chart-day" && visibleZone !== "chart") return { title: "Now watch it move", text: "Scroll to the chart. Your action has already changed the price." };
-  if (step === "tf-info" && visibleZone !== "chart") return { title: "Try the time views", text: "Scroll to the chart controls. 1D, 3D, 1W and 1M show different progress windows." };
-  if (step === "buy-open") return { title: "Tiny action, real movement", text: "Tap BUY +25 UC. This is for a quick action you can do right now." };
-  if (step === "buy-complete") return { title: "Do it, then log it", text: "The task is already filled in. Complete it and watch the chart respond." };
-  if (step === "tap-candle") return { title: "Pick the latest point", text: "👇 Tap the highlighted point on the chart. The lines show what you selected." };
-  if (step === "details" && visibleZone !== "details") return { title: "Read the result", text: "Scroll to the breakdown. You’ll see the price and the change from the previous period." };
-  if (step === "bad-tab") return { title: "Now add honesty", text: "Tap the Bad card. Progress is not only wins — it is also telling the truth." };
-  if (step === "bad-add-entry") return { title: "Track the pattern", text: "Tap Add entry. I filled in a simple bad habit so you can log the slip honestly." };
-  if (step === "bad-reach") return { title: "Open Bad Habits", text: "Tap the Bad card again to continue." };
-  if (step === "bad-sold") return { title: "Log the slip", text: "Tap Sold -50 UC. No drama. Just honest feedback." };
-  if (step === "goals-tab") return { title: "Now finish with a real boost", text: "Tap the Goals card. Goals are the big moves that push your chart higher." };
-  if (step === "goal-add-entry") return { title: "Create the goal", text: "Tap Add entry. I filled in your first goal for you." };
-  if (step === "goal-hold") return { title: "Complete the goal", text: "Tap Complete +400 UC. This one should feel bigger because goals are supposed to matter." };
-  if (step === "goal-chart" && visibleZone !== "chart") return { title: "Look at the jump", text: "Scroll to the chart, then tap the highlighted point 👇." };
-  if (step === "goal-details" && visibleZone !== "details") return { title: "Progress Breakdown", text: "Here you will see what you logged and how the selected period changed." };
-  return null;
-}
-
-function TutorialCoach({ title, text, low = false }: { title: string; text: string; low?: boolean }) {
-    const lowCoachStyle = low
-    ? {
-        bottom: "calc(-72px + env(safe-area-inset-bottom))",
-        padding: "10px 14px",
-        borderRadius: "20px",
-        maxWidth: "calc(100vw - 58px)",
-        pointerEvents: "none" as const,
-      }
-    : undefined;
-
-  return (
-    <div className={styles.guestCoachCard} style={lowCoachStyle} role="status" aria-live="polite">
-      <div className={styles.guestCoachKicker}>First run</div>
-      <div className={styles.guestCoachTitle}>{title}</div>
-      <div className={styles.guestCoachText}>{text}</div>
-    </div>
-  );
-}
-
-function emptyText(tab: TabKey, step: Step) {
-  if (tab === "good" && step === "add-entry") return "Tap Add entry to create your first good habit.";
-  if (tab === "bad" && step === "bad-add-entry") return "Tap Add entry to create a bad habit you want to track honestly.";
-  if (tab === "goals" && step === "goal-add-entry") return "Tap Add entry to create your first goal.";
-  return "Nothing here yet. Use Add entry when this section is highlighted.";
-}
-
-function EmptyState({ text }: { text: string }) {
-  return <div className={styles.empty}><div className={styles.emptyIcon}>◇</div><div className={styles.emptyText}>{text}</div></div>;
-}
-
-function GuideBox({ title, text, button, onClick, pulseButton = true }: { title: string; text: string; button: string; onClick: () => void; pulseButton?: boolean }) {
-  return (
-    <div className={styles.guestGuideBox}>
-      <div><div className={styles.helperTitle}>{title}</div><div className={styles.helperText}>{text}</div></div>
-      <button className={`${styles.primaryBtn} ${pulseButton ? styles.guestPulse : ""}`} onClick={onClick} type="button">{button}</button>
-    </div>
-  );
-}
-
-function DemoCard({
-  item,
-  tab,
-  holdHighlight,
-  soldHighlight,
-  onGoodHold,
-  onBadSold,
-  onGoalHold,
-}: {
-  item: DemoItem;
-  tab: TabKey;
-  holdHighlight: boolean;
-  soldHighlight: boolean;
-  onGoodHold: () => void;
-  onBadSold: () => void;
-  onGoalHold: () => void;
-}) {
-  return (
-    <div className={styles.card}>
-      <div className={styles.cardMain}>
-        <div className={styles.cardTitle}>{item.title}</div>
-        <div className={styles.metaRow}>
-          <span className={styles.metaPill}>{tab === "goals" ? "Goal" : tab === "bad" ? "Pattern" : "Every day"}</span>
-          <span className={styles.metaNote}>{item.notes}</span>
-        </div>
-      </div>
-      <div className={styles.cardActions}>
-        {tab === "goals" ? (
-          <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoalHold} type="button">Complete <span className={styles.delta}>+{item.holdUC} UC</span></button>
-        ) : tab === "bad" ? (
-          <>
-            <button className={styles.actionPrimary} type="button">Hold <span className={styles.delta}>+{item.holdUC} UC</span></button>
-            <button className={`${styles.actionDanger} ${soldHighlight ? styles.guestPulse : ""}`} onClick={onBadSold} type="button">Sold <span className={styles.delta}>{item.soldUC} UC</span></button>
-          </>
-        ) : (
-          <>
-            <button className={`${styles.actionPrimary} ${holdHighlight ? styles.guestPulse : ""}`} onClick={onGoodHold} type="button">Hold <span className={styles.delta}>+{item.holdUC} UC</span></button>
-            <button className={styles.actionDanger} type="button">Sold <span className={styles.delta}>{item.soldUC} UC</span></button>
-          </>
         )}
       </div>
     </div>
   );
 }
 
-function GoalCelebration() {
+/* ---------------- CHART ---------------- */
+function CandleChart({ data, tx, timeframe, guestStep, onGuestStep }: { data: Candle[]; tx: Tx[]; timeframe: "1d" | "3d" | "1w" | "1m"; guestStep?: string; onGuestStep?: (step: any) => void }) {
+
+
+  const [hover, setHover] = useState<Candle | null>(null);
+
+  const [tooltip, setTooltip] = useState<{ candle: Candle; x: number; y: number } | null>(null);
+  const [selectedCandleKey, setSelectedCandleKey] = useState<number | null>(null);
+  const [chartView, setChartView] = useState<"candles" | "line">("candles");
+  const [autoFollow, setAutoFollow] = useState(true);
+  // Viewport state: how many candles are visible + how far we are panned from the latest candle.
+  const [viewport, setViewport] = useState({ visibleCount: 90, offsetFromRight: 0 });
+
+  const containerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const pointerStateRef = useRef({
+    pointers: new Map<number, { x: number; y: number }>(),
+    isPanning: false,
+    panPointerId: null as number | null,
+    startX: 0,
+    startY: 0,
+    startOffset: 0,
+    longPressTimer: null as ReturnType<typeof setTimeout> | null,
+    pinchStartDistance: 0,
+    pinchStartVisible: 0,
+  });
+  const [chartWidth, setChartWidth] = useState(1000);
+
+  const padding = { top: 12, right: 14, bottom: 24, left: 44 };
+  const w = 1000;
+  const h = 320;
+  const candleWidthRatio = 0.7;
+  const minCandleWidth = 3;
+  const maxCandleWidth = 18;
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry?.contentRect) {
+        setChartWidth(entry.contentRect.width);
+      }
+    });
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, []);
+
+  const txByBucket = useMemo(() => {
+    const map = new Map<number, Tx[]>();
+    for (const entry of tx) {
+      const bucket = getBucketStartUtcMs(entry.ts, timeframe);
+      const list = map.get(bucket) ?? [];
+      list.push(entry);
+      map.set(bucket, list);
+    }
+    return map;
+  }, [timeframe, tx]);
+
+  const usablePx = Math.max(1, chartWidth - padding.left - padding.right);
+  const minVisible = Math.max(20, Math.ceil(usablePx / (maxCandleWidth / candleWidthRatio)));
+  const maxVisible = Math.max(minVisible, Math.min(250, Math.floor(usablePx / (minCandleWidth / candleWidthRatio))));
+
+  const clampVisibleCount = useCallback(
+    (count: number) => {
+      if (!data.length) return 0;
+      const clamped = Math.max(minVisible, Math.min(maxVisible, Math.round(count)));
+      return Math.min(data.length, clamped);
+    },
+    [data.length, maxVisible, minVisible]
+  );
+
+  const visibleState = useMemo(() => {
+    if (!data.length) {
+      return { visibleData: [], startIndex: 0, visibleCount: 0, offsetFromRight: 0 };
+    }
+    const nextCount = clampVisibleCount(viewport.visibleCount);
+    const maxOffset = Math.max(0, data.length - nextCount);
+    const nextOffset = autoFollow ? 0 : Math.max(0, Math.min(maxOffset, viewport.offsetFromRight));
+    const startIndex = Math.max(0, data.length - nextCount - nextOffset);
+    return {
+      visibleData: data.slice(startIndex, startIndex + nextCount),
+      startIndex,
+      visibleCount: nextCount,
+      offsetFromRight: nextOffset,
+    };
+  }, [autoFollow, clampVisibleCount, data, viewport.offsetFromRight, viewport.visibleCount]);
+
+  useEffect(() => {
+    setViewport((prev) => {
+      const nextCount = clampVisibleCount(prev.visibleCount);
+      const maxOffset = Math.max(0, data.length - nextCount);
+      const nextOffset = autoFollow ? 0 : Math.max(0, Math.min(maxOffset, prev.offsetFromRight));
+      if (prev.visibleCount === nextCount && prev.offsetFromRight === nextOffset) return prev;
+      return { visibleCount: nextCount, offsetFromRight: nextOffset };
+    });
+  }, [autoFollow, clampVisibleCount, data.length]);
+
+  const { visibleData, startIndex, visibleCount } = visibleState;
+
+  const { min, max } = useMemo(() => {
+    if (!visibleData.length) return { min: 0.9, max: 1.1 };
+    let mn = Infinity;
+    let mx = -Infinity;
+    for (const d of visibleData) {
+      mn = Math.min(mn, d.l);
+      mx = Math.max(mx, d.h);
+    }
+    if (mn === mx) {
+      const bump = mn * 0.02 + 0.01;
+      return { min: mn - bump, max: mx + bump };
+    }
+    const pad = (mx - mn) * 0.08;
+    return { min: mn - pad, max: mx + pad };
+  }, [visibleData]);
+
+  const yToPx = (v: number) => {
+    const usable = h - padding.top - padding.bottom;
+    const t = (v - min) / (max - min || 1);
+    return h - padding.bottom - t * usable;
+  };
+
+  const usableW = w - padding.left - padding.right;
+  const step = usableW / Math.max(1, visibleCount || 1);
+  const bodyW = Math.max(minCandleWidth, Math.min(maxCandleWidth, step * candleWidthRatio));
+  const pxX = (i: number) => padding.left + i * step + step / 2;
+
+  const yTicks = 4;
+  const tickVals = Array.from({ length: yTicks + 1 }, (_, i) => min + ((max - min) * i) / yTicks);
+
+  const londonDateTime = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    []
+  );
+
+  const londonTime = useMemo(
+    () =>
+      new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        hour: "2-digit",
+        minute: "2-digit",
+      }),
+    []
+  );
+
+  const formatXAxisLabel = useCallback(
+    (ts: number) => {
+      const date = new Date(ts);
+
+      if (timeframe === "1m") {
+        return new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Europe/London",
+          month: "short",
+          year: "2-digit",
+        }).format(date);
+      }
+
+      if (timeframe === "1w") {
+        return `W/C ${new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Europe/London",
+          day: "2-digit",
+          month: "short",
+        }).format(date)}`;
+      }
+
+      if (timeframe === "3d") {
+        return new Intl.DateTimeFormat("en-GB", {
+          timeZone: "Europe/London",
+          day: "2-digit",
+          month: "short",
+        }).format(date);
+      }
+
+      return new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Europe/London",
+        day: "2-digit",
+        month: "short",
+      }).format(date);
+    },
+    [timeframe]
+  );
+
+  const selectedCandle = useMemo(
+    () => (selectedCandleKey ? data.find((c) => c.t === selectedCandleKey) ?? null : null),
+    [data, selectedCandleKey]
+  );
+
+  // Candle selection filtering: use the timeframe bucket to collect tx for the selected candle.
+  const selectedTx = useMemo(() => {
+    if (!selectedCandleKey) return [];
+    const list = txByBucket.get(selectedCandleKey) ?? [];
+    return [...list].sort((a, b) => b.ts - a.ts);
+  }, [selectedCandleKey, txByBucket]);
+
+  const setTooltipForEvent = useCallback(
+    (candle: Candle, clientX: number, clientY: number) => {
+      if (!containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      setTooltip({
+        candle,
+        x: Math.min(rect.width - 8, Math.max(8, clientX - rect.left)),
+        y: Math.min(rect.height - 8, Math.max(8, clientY - rect.top)),
+      });
+    },
+    []
+  );
+
+  const getIndexFromClientX = useCallback(
+    (clientX: number) => {
+      if (!svgRef.current || !visibleData.length) return 0;
+      const rect = svgRef.current.getBoundingClientRect();
+      const localX = clientX - rect.left;
+      const t = (localX / rect.width) * w;
+      const localIndex = Math.max(0, Math.min(visibleData.length - 1, Math.floor((t - padding.left) / step)));
+      return startIndex + localIndex;
+    },
+    [startIndex, step, visibleData.length]
+  );
+
+  const zoomTo = useCallback(
+    (nextVisibleCount: number, pivotIndex: number) => {
+      setViewport((prev) => {
+        if (!data.length) return prev;
+        const clampedNext = clampVisibleCount(nextVisibleCount);
+        if (!clampedNext) return prev;
+
+        const currentCount = clampVisibleCount(prev.visibleCount);
+        const currentMaxOffset = Math.max(0, data.length - currentCount);
+        const currentOffset = autoFollow ? 0 : Math.max(0, Math.min(currentMaxOffset, prev.offsetFromRight));
+        const currentStart = Math.max(0, data.length - currentCount - currentOffset);
+        const safePivot = Math.max(0, Math.min(data.length - 1, pivotIndex));
+        const pivotRatio = currentCount ? (safePivot - currentStart) / currentCount : 0.5;
+        const nextStart = Math.round(safePivot - pivotRatio * clampedNext);
+        const nextMaxOffset = Math.max(0, data.length - clampedNext);
+        const nextOffset = Math.max(0, Math.min(nextMaxOffset, data.length - clampedNext - nextStart));
+        return { visibleCount: clampedNext, offsetFromRight: autoFollow ? 0 : nextOffset };
+      });
+    },
+    [autoFollow, clampVisibleCount, data.length]
+  );
+
+  const handleWheel = useCallback(
+    (event: React.WheelEvent<SVGSVGElement>) => {
+      if (!data.length) return;
+      event.preventDefault();
+      const pivot = getIndexFromClientX(event.clientX);
+      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) {
+        const rect = svgRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const stepPx = rect.width / Math.max(1, visibleCount || 1);
+        const deltaCandles = event.deltaX / stepPx;
+        setAutoFollow(false);
+        setViewport((prev) => ({ ...prev, offsetFromRight: prev.offsetFromRight + deltaCandles }));
+        return;
+      }
+
+      const zoomFactor = Math.exp(event.deltaY * 0.002);
+      zoomTo(Math.round(visibleCount * zoomFactor), pivot);
+    },
+    [data.length, getIndexFromClientX, visibleCount, zoomTo]
+  );
+
+  const handlePointerDown = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      if (!data.length) return;
+      const state = pointerStateRef.current;
+      state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (state.pointers.size === 2) {
+        const points = Array.from(state.pointers.values());
+        const dx = points[0].x - points[1].x;
+        const dy = points[0].y - points[1].y;
+        state.pinchStartDistance = Math.hypot(dx, dy);
+        state.pinchStartVisible = visibleCount;
+      }
+
+      state.startX = event.clientX;
+      state.startY = event.clientY;
+      state.panPointerId = event.pointerId;
+      state.isPanning = false;
+      state.startOffset = viewport.offsetFromRight;
+
+      if (event.pointerType !== "mouse") {
+        if (state.longPressTimer) clearTimeout(state.longPressTimer);
+        state.longPressTimer = setTimeout(() => {
+          const index = getIndexFromClientX(event.clientX);
+          const candle = data[index];
+          if (candle) {
+            setSelectedCandleKey(candle.t);
+      if (guestStep === "tapChart") onGuestStep?.("scrollLogs");
+            setTooltipForEvent(candle, event.clientX, event.clientY);
+          }
+        }, 380);
+      }
+    },
+    [data, getIndexFromClientX, setTooltipForEvent, viewport.offsetFromRight, visibleCount]
+  );
+
+  const handlePointerMove = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      // Pan/zoom logic: horizontal drag pans (offsetFromRight), two-finger pinch scales visibleCount.
+      if (!data.length) return;
+      const state = pointerStateRef.current;
+      if (!state.pointers.has(event.pointerId)) return;
+      state.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (state.pointers.size === 2) {
+        event.preventDefault();
+        const [p1, p2] = Array.from(state.pointers.values());
+        const dx = p1.x - p2.x;
+        const dy = p1.y - p2.y;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        const scale = state.pinchStartDistance ? state.pinchStartDistance / dist : 1;
+        const midpointX = (p1.x + p2.x) / 2;
+        const pivotIndex = getIndexFromClientX(midpointX);
+        zoomTo(Math.round(state.pinchStartVisible * scale), pivotIndex);
+        return;
+      }
+
+      if (event.pointerType === "mouse") {
+        const index = getIndexFromClientX(event.clientX);
+        const candle = data[index];
+        if (candle) {
+          setHover(candle);
+          setTooltipForEvent(candle, event.clientX, event.clientY);
+        }
+      } else if (!state.isPanning) {
+        const dx = event.clientX - state.startX;
+        const dy = event.clientY - state.startY;
+        if (Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) {
+          state.isPanning = true;
+          setAutoFollow(false);
+          if (svgRef.current) {
+            svgRef.current.setPointerCapture(event.pointerId);
+          }
+        } else if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+          if (state.longPressTimer) clearTimeout(state.longPressTimer);
+        }
+      }
+
+      if (state.isPanning && svgRef.current) {
+        event.preventDefault();
+        const rect = svgRef.current.getBoundingClientRect();
+        const stepPx = rect.width / Math.max(1, visibleCount || 1);
+        const dx = event.clientX - state.startX;
+        const deltaCandles = dx / stepPx;
+        setViewport((prev) => ({ ...prev, offsetFromRight: state.startOffset + deltaCandles }));
+      }
+    },
+    [data, getIndexFromClientX, setTooltipForEvent, visibleCount, zoomTo]
+  );
+
+  const handlePointerUp = useCallback(
+    (event: React.PointerEvent<SVGSVGElement>) => {
+      const state = pointerStateRef.current;
+      if (state.longPressTimer) {
+        clearTimeout(state.longPressTimer);
+        state.longPressTimer = null;
+      }
+
+      const wasPanning = state.isPanning;
+      state.pointers.delete(event.pointerId);
+      if (state.panPointerId === event.pointerId) {
+        state.isPanning = false;
+        state.panPointerId = null;
+      }
+      if (svgRef.current) {
+        svgRef.current.releasePointerCapture(event.pointerId);
+      }
+
+      if (!wasPanning) {
+        const index = getIndexFromClientX(event.clientX);
+        const candle = data[index];
+        if (candle) {
+          setSelectedCandleKey(candle.t);
+      if (guestStep === "tapChart") onGuestStep?.("scrollLogs");
+          setTooltipForEvent(candle, event.clientX, event.clientY);
+        }
+      }
+    },
+    [data, getIndexFromClientX, setTooltipForEvent]
+  );
+
+  const handlePointerLeave = useCallback(() => {
+    setHover(null);
+    setTooltip(null);
+  }, []);
+
+  const handleZoomButton = useCallback(
+    (direction: "in" | "out") => {
+      if (!data.length) return;
+      const pivot = startIndex + Math.floor(visibleData.length / 2);
+      const factor = direction === "in" ? 0.8 : 1.2;
+      zoomTo(Math.round(visibleCount * factor), pivot);
+    },
+    [data.length, startIndex, visibleCount, visibleData.length, zoomTo]
+  );
+
+  const resetView = useCallback(() => {
+    setAutoFollow(true);
+    setViewport({ visibleCount: 90, offsetFromRight: 0 });
+  }, []);
+
+  const renderTooltip = tooltip?.candle ?? hover;
+  const tooltipEvents = renderTooltip ? txByBucket.get(renderTooltip.t)?.length ?? 0 : 0;
+
+  const activeChartPoint = renderTooltip ?? selectedCandle;
+  const activeVisibleIndex = activeChartPoint ? visibleData.findIndex((entry) => entry.t === activeChartPoint.t) : -1;
+  const activeX = activeVisibleIndex >= 0 ? pxX(activeVisibleIndex) : null;
+  const activeY = activeChartPoint ? yToPx(activeChartPoint.c) : null;
+
+  const selectedIndex = selectedCandle ? data.findIndex((entry) => entry.t === selectedCandle.t) : -1;
+  const previousCandle = selectedIndex > 0 ? data[selectedIndex - 1] : null;
+  const absoluteMove = selectedCandle && previousCandle ? selectedCandle.c - previousCandle.c : 0;
+  const percentMove = selectedCandle && previousCandle && previousCandle.c !== 0 ? (absoluteMove / previousCandle.c) * 100 : 0;
+  const movementIsUp = absoluteMove >= 0;
+  const movementArrow = movementIsUp ? "↑" : "↓";
+  const movementClass = movementIsUp ? styles.txPositive : styles.txNegative;
+  const periodLabel = timeframe === "1d" ? "previous day" : timeframe === "3d" ? "previous 3 days" : timeframe === "1w" ? "previous week" : "previous month";
+
+  const detailRange = useMemo(() => {
+    if (!selectedCandle) return null;
+    const start = selectedCandle.t;
+    const end = getNextBucketStartUtcMs(start, timeframe);
+    return { start, end };
+  }, [selectedCandle, timeframe]);
+
+  useEffect(() => {
+    if (!selectedCandleKey) return;
+    const exists = data.some((entry) => entry.t === selectedCandleKey);
+    if (!exists) {
+      setSelectedCandleKey(null);
+    }
+  }, [data, selectedCandleKey]);
+
+
+  const linePoints = useMemo(() => {
+    return visibleData.map((d, i) => ({
+      key: d.t,
+      x: pxX(i),
+      y: yToPx(d.c),
+      candle: d,
+    }));
+  }, [visibleData, min, max, step]);
+
+  const linePath = useMemo(() => {
+    if (!linePoints.length) return "";
+    return linePoints.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
+  }, [linePoints]);
+
+  const formatTxLabel = (label: string, deltaUC: number) => {
+    const match = label.match(/^(.*)\s\(([^)]+)\)$/);
+    if (match) return { title: match[1], action: match[2] };
+    const lower = label.toLowerCase();
+    if (lower.includes("good habit") && lower.includes("hold")) return { title: label, action: "Good habit · Hold" };
+    if (lower.includes("good habit") && lower.includes("sold")) return { title: label, action: "Good habit · Sold" };
+    if (lower.includes("bad habit") && lower.includes("hold")) return { title: label, action: "Bad habit · Hold" };
+    if (lower.includes("bad habit") && lower.includes("sold")) return { title: label, action: "Bad habit · Sold" };
+    if (lower.includes("addiction") && lower.includes("hold")) return { title: label, action: "Addiction · Hold" };
+    if (lower.includes("addiction") && lower.includes("sold")) return { title: label, action: "Addiction · Sold" };
+    if (deltaUC > 0) return { title: label, action: "Hold" };
+    if (deltaUC < 0) return { title: label, action: "Sold" };
+    return { title: label, action: "Flat" };
+  };
+
+  
+
+
   return (
-    <div className={styles.goalCelebration} aria-hidden="true">
-      <div className={styles.goalBurst}>+400 UC</div>
-      {Array.from({ length: 18 }).map((_, i) => <span key={i} style={{ "--i": i } as React.CSSProperties} />)}
+    <div className={styles.chartSection}>
+      <div className={styles.chartControls}>
+        <div className={styles.chartMeta}>
+          <div className={styles.viewToggle} aria-label="Chart view">
+            <button className={`${styles.viewToggleBtn} ${chartView === "candles" ? styles.viewToggleBtnOn : ""}`} type="button" onClick={() => setChartView("candles")} aria-pressed={chartView === "candles"}>
+              Candlesticks
+            </button>
+            <button className={`${styles.viewToggleBtn} ${chartView === "line" ? styles.viewToggleBtnOn : ""} ${guestStep === "lineMode" ? styles.guestPulse : ""}`} type="button" onClick={() => { setChartView("line"); if (guestStep === "lineMode") onGuestStep?.("timeframes"); }} aria-pressed={chartView === "line"}>
+              Line
+            </button>
+          </div>
+          <div className={styles.viewportBadge}>{visibleData.length} visible</div>
+        </div>
+
+        <div className={styles.chartBtnRow}>
+          <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("out")} aria-label="Zoom out">
+            −
+          </button>
+          <button className={styles.chartBtn} type="button" onClick={() => handleZoomButton("in")} aria-label="Zoom in">
+            +
+          </button>
+          <button className={styles.chartBtn} type="button" onClick={resetView} aria-label="Reset view">
+            Reset
+          </button>
+        </div>
+      </div>
+
+      <div className={styles.chartWrap} ref={containerRef}>
+        {!data.length ? (
+          <div style={{ padding: 12, opacity: 0.7, fontSize: 13 }}>
+            No activity yet — hit Complete / Hold buttons to start the chart.
+          </div>
+        ) : (
+          <svg
+            ref={svgRef}
+            className={styles.chartSvg}
+            viewBox={`0 0 ${w} ${h}`}
+            preserveAspectRatio="none"
+            style={{ width: "100%", height: 280, display: "block" }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onPointerLeave={handlePointerLeave}
+            onWheel={handleWheel}
+          >
+            <rect x="0" y="0" width={w} height={h} rx="24" fill="rgba(0,0,0,0.10)" />
+
+            {/* grid + y labels */}
+            {tickVals.map((v, i) => {
+              const yy = yToPx(v);
+              return (
+                <g key={i}>
+                  <line x1={padding.left} x2={w - padding.right} y1={yy} y2={yy} stroke="rgba(255,255,255,0.06)" />
+                  <text x={padding.left - 10} y={yy + 4} textAnchor="end" fontSize="12" fill="rgba(255,255,255,0.45)">
+                    {v.toFixed(3)}
+                  </text>
+                </g>
+              );
+            })}
+
+            {chartView === "line" ? (
+              <g>
+                {linePath ? (
+                  <path d={linePath} fill="none" stroke="rgba(245,245,245,0.88)" strokeWidth={3} strokeLinecap="round" strokeLinejoin="round" />
+                ) : null}
+                {linePoints.map((point) => {
+                  const isSelected = selectedCandleKey === point.key;
+                  return (
+                    <g key={`line-${point.key}`}>
+                      {isSelected ? (
+                        <rect
+                          x={point.x - Math.max(bodyW, step * 0.72) / 2}
+                          y={padding.top}
+                          width={Math.max(bodyW, step * 0.72)}
+                          height={h - padding.top - padding.bottom}
+                          rx={10}
+                          fill="rgba(45,212,191,0.08)"
+                          stroke="rgba(45,212,191,0.55)"
+                          strokeWidth={1.5}
+                        />
+                      ) : null}
+                      <circle
+                        cx={point.x}
+                        cy={point.y}
+                        r={isSelected ? 6.5 : Math.max(3.5, Math.min(5, step * 0.14))}
+                        fill={isSelected ? "rgba(45,212,191,0.95)" : "rgba(245,245,245,0.85)"}
+                        stroke={isSelected ? "rgba(255,255,255,0.95)" : "rgba(0,0,0,0.55)"}
+                        strokeWidth={isSelected ? 2.2 : 1.4}
+                      />
+                    </g>
+                  );
+                })}
+              </g>
+            ) : (
+              <>
+            {/* candles */}
+            {visibleData.map((d, i) => {
+              const x = pxX(i);
+              const yO = yToPx(d.o);
+              const yC = yToPx(d.c);
+              const yH = yToPx(d.h);
+              const yL = yToPx(d.l);
+
+              const up = d.c >= d.o;
+              const stroke = up ? "rgba(52,211,153,0.95)" : "rgba(251,113,133,0.95)";
+              const fill = up ? "rgba(52,211,153,0.55)" : "rgba(251,113,133,0.55)";
+
+              const top = Math.min(yO, yC);
+              const bot = Math.max(yO, yC);
+              const bodyH = Math.max(2, bot - top);
+
+              const isSelected = selectedCandleKey === d.t;
+
+              return (
+                <g key={d.t} opacity={isSelected ? 1 : 0.92}>
+                  {isSelected ? (
+                    <rect
+                      x={x - Math.max(bodyW, step * 0.72) / 2}
+                      y={padding.top}
+                      width={Math.max(bodyW, step * 0.72)}
+                      height={h - padding.top - padding.bottom}
+                      rx={10}
+                      fill="rgba(45,212,191,0.08)"
+                      stroke="rgba(45,212,191,0.55)"
+                      strokeWidth={1.5}
+                    />
+                  ) : null}
+                  <line x1={x} x2={x} y1={yH} y2={yL} stroke={stroke} strokeWidth={isSelected ? 3 : 2} opacity={isSelected ? 1 : 0.85} />
+                  <rect
+                    x={x - bodyW / 2}
+                    y={top}
+                    width={bodyW}
+                    height={bodyH}
+                    rx={3}
+                    fill={fill}
+                    stroke={isSelected ? "rgba(255,255,255,0.9)" : stroke}
+                    strokeWidth={isSelected ? 2.5 : 1}
+                  />
+                </g>
+              );
+            })}
+              </>
+            )}
+
+            {activeX !== null && activeY !== null ? (
+              <g pointerEvents="none">
+                <line x1={activeX} x2={activeX} y1={padding.top} y2={h - padding.bottom} stroke="rgba(255,255,255,0.32)" strokeWidth={1} strokeDasharray="5 6" />
+                <line x1={padding.left} x2={w - padding.right} y1={activeY} y2={activeY} stroke="rgba(255,255,255,0.28)" strokeWidth={1} strokeDasharray="5 6" />
+                <circle cx={activeX} cy={activeY} r={5.5} fill="rgba(45,212,191,0.95)" stroke="rgba(255,255,255,0.9)" strokeWidth={2} />
+              </g>
+            ) : null}
+
+            {guestStep === "tapChart" && visibleData.length ? (() => {
+              const lastIndex = visibleData.length - 1;
+              const latest = visibleData[lastIndex];
+              const x = pxX(lastIndex);
+              const y = chartView === "line" ? yToPx(latest.c) : Math.min(yToPx(latest.o), yToPx(latest.c), yToPx(latest.h)) - 18;
+              return (
+                <g className={styles.guestSvgPointer}>
+                  <text x={x} y={Math.max(34, y - 28)} textAnchor="middle" className={styles.guestSvgPointerLabel}>Tap</text>
+                  <text x={x} y={Math.max(64, y)} textAnchor="middle" className={styles.guestSvgPointerEmoji}>👇</text>
+                </g>
+              );
+            })() : null}
+
+            {/* sparse bottom labels */}
+            {visibleData.map((d, i) => {
+              const every = Math.max(1, Math.floor(visibleData.length / 6));
+              if (i % every !== 0 && i !== visibleData.length - 1) return null;
+              const x = pxX(i);
+              const label = formatXAxisLabel(d.t);
+              return (
+                <text key={`lbl-${d.t}`} x={x} y={h - 6} textAnchor="middle" fontSize="11" fill="rgba(255,255,255,0.35)">
+                  {label}
+
+                </text>
+         );
+        })}
+      </svg>
+    )}
+
+    {renderTooltip ? (
+      <div className={styles.chartTooltip} style={{ left: tooltip?.x ?? 24, top: tooltip?.y ?? 24 }}>
+        <div className={styles.tooltipTitle}>Price</div>
+        <div className={styles.tooltipValue}>U${renderTooltip.c.toFixed(3)}</div>
+        <div className={styles.tooltipMeta}>{tooltipEvents} logs</div>
+      </div>
+    ) : null}
+  </div>
+
+  <div className={`${styles.detailsPanel} ${selectedCandle ? styles.detailsPanelOpen : ""} ${guestStep === "logsExplain" ? styles.guestPulse : ""}`}>
+    <div className={styles.detailsHeader}>
+      <div>
+        <div className={styles.detailsTitle}>Selected period</div>
+        {selectedCandle && detailRange ? (
+          <div className={styles.detailsRange}>
+            {londonDateTime.format(new Date(detailRange.start))} – {londonDateTime.format(new Date(detailRange.end))}
+          </div>
+        ) : (
+          <div className={styles.detailsRange}>Tap the chart to see what changed.</div>
+        )}
+      </div>
+      {selectedCandle ? (
+        <button className={styles.iconBtn} type="button" onClick={() => setSelectedCandleKey(null)}>
+          ✕
+        </button>
+      ) : null}
+        </div>
+        {selectedCandle ? (
+          <div className={styles.detailsBody}>
+            <div className={styles.detailsStats}>
+              <div>
+                <span>Started at</span>
+                <strong>U${selectedCandle.o.toFixed(3)}</strong>
+              </div>
+              <div>
+                <span>Price</span>
+                <strong>U${selectedCandle.c.toFixed(3)}</strong>
+              </div>
+              <div>
+                <span>Change</span>
+                {previousCandle ? (
+                  <strong className={movementClass}>
+                    {movementArrow} U${Math.abs(absoluteMove).toFixed(3)} · {percentMove >= 0 ? "+" : ""}
+                    {percentMove.toFixed(2)}% from {periodLabel}
+                  </strong>
+                ) : (
+                  <strong>First logged period</strong>
+                )}
+              </div>
+            </div>
+
+            <div className={styles.txList}>
+              {selectedTx.length ? (
+                selectedTx.map((entry) => {
+                  const { title, action } = formatTxLabel(entry.label, entry.deltaUC);
+                  const isUp = entry.deltaUC > 0;
+                  const isDown = entry.deltaUC < 0;
+                  const deltaLabel = `${entry.deltaUC >= 0 ? "+" : ""}${entry.deltaUC} UC`;
+                  return (
+                    <div key={entry.id} className={styles.txItem}>
+                      <div>
+                        <div className={styles.txTitle}>
+                          {title} <span className={styles.txAction}>({action})</span>
+                        </div>
+                        <div className={styles.txTime}>{londonTime.format(new Date(entry.ts))}</div>
+                      </div>
+                      <div className={`${styles.txDelta} ${isUp ? styles.txPositive : isDown ? styles.txNegative : styles.txNeutral}`}>
+                        {deltaLabel}
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className={styles.emptyTx}>No activity logged in this candle.</div>
+              )}
+            </div>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
-function MiniCandleChart({ candles, selected, latest, shouldPulse, pointerText, onSelect }: { candles: Candle[]; selected: Candle | null; latest: Candle | null; shouldPulse: boolean; pointerText: string; onSelect: (c: Candle) => void }) {
-  const [hovered, setHovered] = useState<Candle | null>(null);
-  const w = 1000;
-  const h = 320;
-  const padding = { top: 18, right: 18, bottom: 28, left: 50 };
-  const vals = candles.flatMap((c) => [c.h, c.l]);
-  const min = Math.min(...vals, 0.95);
-  const max = Math.max(...vals, 1.05);
-  const span = Math.max(0.001, max - min);
-  const xStep = (w - padding.left - padding.right) / Math.max(1, candles.length);
-  const y = (v: number) => padding.top + ((max - v) / span) * (h - padding.top - padding.bottom);
-  const active = hovered ?? selected;
-  const activeIndex = active ? candles.findIndex((c) => c.t === active.t) : -1;
-  const activeX = activeIndex >= 0 ? padding.left + activeIndex * xStep + xStep / 2 : null;
-  const activeY = active ? y(active.c) : null;
-  const latestIndex = latest ? candles.findIndex((c) => c.t === latest.t) : -1;
-  const pointerX = latestIndex >= 0 ? padding.left + latestIndex * xStep + xStep / 2 : w * 0.78;
-  const pointerY = latest ? y(latest.h) : h * 0.35;
-  const pointerGroupY = Math.max(padding.top + 42, pointerY - 54);
+function GuestCoach({
+  step,
+  onNext,
+  onCreateAccount,
+}: {
+  step: string;
+  onNext: (next: any) => void;
+  onCreateAccount: () => void;
+}) {
+  const copy: Record<string, { kicker: string; title: string; text: string; button?: string; next?: string; arrows?: "down" | "up" }> = {
+    goodTab: { kicker: "Tutorial", title: "Start with Good Habits", text: "Tap Good Habits first. This is where you track behaviours you want to build." },
+    addGood: { kicker: "Step 1", title: "Add your first habit", text: "Now tap Add entry. I preloaded a simple habit so you can see the flow fast." },
+    goodText: { kicker: "Step 2", title: "Habit loaded", text: "Habit: Logging my habits. Leave it as it is for the tutorial.", button: "Next", next: "goodIntensity" },
+    goodIntensity: { kicker: "Step 3", title: "Set fair rewards", text: "Some habits are smaller. Move the intensity to +20 / -10 so the reward matches the effort." },
+    submitGood: { kicker: "Step 4", title: "Add it", text: "Tap Add to put this habit into your dashboard." },
+    holdGood: { kicker: "Step 5", title: "Log the habit", text: "Tap Hold to log that you did it. This pushes your YouInc price up." },
+    scrollChart: { kicker: "Chart", title: "Scroll down", text: "Your action created chart data. Scroll down to the chart.", button: "I’m at the chart", next: "lineMode", arrows: "down" },
+    lineMode: { kicker: "Chart view", title: "Try Line mode", text: "You can switch between candlesticks and line mode depending on what feels clearer." },
+    timeframes: { kicker: "Timeframes", title: "1D / 3D / 1W / 1M", text: "These change how your progress is grouped: daily, every 3 days, calendar weeks, or calendar months.", button: "OK", next: "buyOpen" },
+    buyOpen: { kicker: "Quick actions", title: "Use BUY for small wins", text: "BUY is for quick tasks like reading a page, doing push ups, tidying your room, or anything productive." },
+    buyComplete: { kicker: "Quick action", title: "5 push ups loaded", text: "Tap Completed +25 UC to log it." },
+    tapChart: { kicker: "Inspect", title: "Tap the candle or dot", text: "Tap the only candle/dot to inspect exactly what changed in this period." },
+    scrollLogs: { kicker: "Logs", title: "Scroll down", text: "Now scroll down to the selected-period logs.", button: "Show me", next: "logsExplain", arrows: "down" },
+    logsExplain: { kicker: "Logs", title: "This is your evidence", text: "Here you can see logs and performance difference depending on the selected period.", button: "Next", next: "badTab" },
+    badTab: { kicker: "Bad habits", title: "Now track honesty", text: "Scroll up and tap Bad Habits. This is where you log patterns you want to reduce.", arrows: "up" },
+    addBad: { kicker: "Bad habit", title: "Add one", text: "Tap Add entry. The bad habit is preloaded for this tutorial." },
+    submitBad: { kicker: "Bad habit", title: "Add your bad habit", text: "Tap Add. No intensity step here — keep moving." },
+    soldBad: { kicker: "Bad habit", title: "Log the slip", text: "Tap Sold -50. Not as punishment — as data." },
+    honesty: { kicker: "Good", title: "Honesty matters most", text: "Being honest with yourself is the whole point. The chart only works if your logs are real.", button: "OK", next: "goalsTab" },
+    goalsTab: { kicker: "Goals", title: "Now add a goal", text: "Scroll up if needed, then tap Goals." , arrows: "up"},
+    addGoal: { kicker: "Goal", title: "Add a goal", text: "Tap Add entry. I loaded a simple goal for the demo." },
+    submitGoal: { kicker: "Goal", title: "Add the goal", text: "Tap Add to place it into Goals." },
+    completeGoal: { kicker: "Goal", title: "Complete it", text: "Tap Complete +400 to see the bigger win animation." },
+    signup: { kicker: "YouInc", title: "Ready to track the real you?", text: "Create your account and turn this demo into your own behaviour dashboard.", button: "Create my account", next: "create" },
+    demo: { kicker: "Demo mode", title: "Play around", text: "You can keep testing the demo. Your real account is one tap away at the bottom." },
+  };
+
+  const item = copy[step] ?? copy.goodTab;
+
+  if (step === "signup") {
+    return (
+      <>
+        <div className={styles.confirmOverlay} role="dialog" aria-modal="true">
+          <div className={styles.confirmBox}>
+            <div className={styles.confirmKicker}>Your first chart is alive</div>
+            <h2 className={styles.confirmTitle}>Build your own YouInc account</h2>
+            <p className={styles.confirmText}>Track the habits, goals, bad habits, and quick wins that actually move your life forward.</p>
+            <div className={styles.confirmActions}>
+              <button className={styles.ghostBtn} type="button" onClick={() => onNext("demo")}>Play around in demo</button>
+              <button className={`${styles.primaryBtn} ${styles.guestPulse}`} type="button" onClick={onCreateAccount}>Create my account</button>
+            </div>
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  const modalSteps = ["goodText", "goodIntensity", "submitGood", "submitBad", "submitGoal"];
 
   return (
-    <div className={styles.chartWrap}>
-      <svg className={styles.chartSvg} viewBox={`0 0 ${w} ${h}`} role="img" aria-label="Guest progress chart" onMouseLeave={() => setHovered(null)}>
-        <line x1={padding.left} x2={w - padding.right} y1={h - padding.bottom} y2={h - padding.bottom} stroke="rgba(255,255,255,0.12)" />
-
-        {activeX !== null && activeY !== null ? (
-          <g className={styles.chartCrosshair}>
-            <line x1={activeX} x2={activeX} y1={padding.top} y2={h - padding.bottom} />
-            <line x1={padding.left} x2={w - padding.right} y1={activeY} y2={activeY} />
-          </g>
+    <>
+      {item.arrows === "down" ? <div className={styles.guestScrollArrows} aria-hidden="true">↓↓↓</div> : null}
+      {item.arrows === "up" ? <div className={styles.guestScrollArrowsUp} aria-hidden="true">↑↑↑</div> : null}
+      <div className={`${styles.guestCoachCard} ${modalSteps.includes(step) ? styles.guestCoachCardTop : ""}`}>
+        <div>
+          <div className={styles.guestCoachKicker}>{item.kicker}</div>
+          <div className={styles.guestCoachTitle}>{item.title}</div>
+          <div className={styles.guestCoachText}>{item.text}</div>
+        </div>
+        {item.button ? (
+          <button
+            className={`${styles.primaryBtn} ${step === "signup" ? styles.guestPulse : ""}`}
+            type="button"
+            onClick={() => item.next === "create" ? onCreateAccount() : onNext(item.next)}
+            style={{ pointerEvents: "auto", marginTop: 10 }}
+          >
+            {item.button}
+          </button>
         ) : null}
+      </div>
+      {step === "demo" ? (
+        <button className={`${styles.guestBottomBar} ${styles.guestPulse}`} type="button" onClick={onCreateAccount}>Create my account</button>
+      ) : null}
+    </>
+  );
+}
 
-        {candles.map((c, i) => {
-          const x = padding.left + i * xStep + xStep / 2;
-          const bodyTop = y(Math.max(c.o, c.c));
-          const bodyBottom = y(Math.min(c.o, c.c));
-          const bodyH = Math.max(4, bodyBottom - bodyTop);
-          const up = c.c >= c.o;
-          const isLatest = latest?.t === c.t;
-          const isSelected = selected?.t === c.t;
-          const isHovered = hovered?.t === c.t;
-
-          return (
-            <g
-              key={c.t}
-              onClick={() => onSelect(c)}
-              onMouseEnter={() => setHovered(c)}
-              onTouchStart={() => setHovered(c)}
-              style={{ cursor: "pointer" }}
-              className={`${shouldPulse && isLatest ? styles.guestCandlePulse : ""} ${isSelected ? styles.selectedChartPoint : ""}`}
-            >
-              <line x1={x} x2={x} y1={y(c.h)} y2={y(c.l)} stroke={up ? "rgba(52,211,153,0.95)" : "rgba(251,113,133,0.95)"} strokeWidth={isSelected ? 4 : 2} />
-              <rect x={x - Math.min(14, xStep * 0.35)} y={bodyTop} width={Math.min(28, xStep * 0.7)} height={bodyH} rx={4} fill={up ? "rgba(52,211,153,0.78)" : "rgba(251,113,133,0.78)"} stroke={isSelected || isHovered ? "rgba(255,255,255,0.96)" : "rgba(255,255,255,0.15)"} strokeWidth={isSelected ? 3 : 1} />
-              {isSelected ? <circle cx={x} cy={y(c.c)} r={8} fill="rgba(255,255,255,0.95)" /> : null}
-              <rect x={x - xStep / 2} y={0} width={xStep} height={h} fill="transparent" />
-            </g>
-          );
-        })}
-
-        {shouldPulse ? (
-          <g transform={`translate(${pointerX}, ${pointerGroupY})`} aria-hidden="true">
-            <g className={styles.guestSvgPointer}>
-              <text className={styles.guestSvgPointerLabel} x="0" y="0" textAnchor="middle">Tap</text>
-              <text className={styles.guestSvgPointerEmoji} x="0" y="36" textAnchor="middle">{pointerText}</text>
-            </g>
-          </g>
-        ) : null}
-      </svg>
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className={styles.empty}>
+      <div className={styles.emptyIcon}>◎</div>
+      <div className={styles.emptyText}>{text}</div>
     </div>
   );
 }
