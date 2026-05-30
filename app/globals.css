@@ -86,3 +86,41 @@ select {
 ::-webkit-scrollbar-thumb:hover {
   background: #3a3a3a;
 }
+
+.placeholderPage {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.placeholderCard {
+  width: min(100%, 520px);
+  padding: 28px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--bg-card);
+}
+
+.placeholderKicker {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.placeholderCard h1 {
+  margin: 10px 0 8px;
+}
+
+.placeholderCard p {
+  margin: 0 0 18px;
+  color: var(--text-muted);
+}
+
+.placeholderCard a {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}

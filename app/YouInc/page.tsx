@@ -458,7 +458,7 @@ export default function YouIncPage() {
   const [badIntensityIndex, setBadIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
   const [intensityEditor, setIntensityEditor] = useState<{ kind: "good" | "bad"; id: string; index: number } | null>(null);
   const [confirmAction, setConfirmAction] = useState<
-    | { type: "switchAccount" }
+    | { type: "logout" }
     | { type: "deleteItem"; kind: TabKey; id: string; title: string }
     | null
   >(null);
@@ -1005,7 +1005,7 @@ function submitBuyActivity() {
   function confirmPendingAction() {
     if (!confirmAction) return;
 
-    if (confirmAction.type === "switchAccount") {
+    if (confirmAction.type === "logout") {
       router.push("/logout");
       return;
     }
@@ -1088,10 +1088,10 @@ function submitBuyActivity() {
             <div className={styles.confirmBox}>
               <div className={styles.confirmKicker}>Confirm action</div>
               <h2 id="confirm-title" className={styles.confirmTitle}>
-                {confirmAction.type === "switchAccount" ? "Switch account?" : "Delete this entry?"}
+                {confirmAction.type === "logout" ? "Log out?" : "Delete this entry?"}
               </h2>
               <p className={styles.confirmText}>
-                {confirmAction.type === "switchAccount"
+                {confirmAction.type === "logout"
                   ? "You’ll leave this account and go back to login."
                   : `This will remove “${confirmAction.title}” from ${SECTION_TITLES[confirmAction.kind].toLowerCase()}.`}
               </p>
@@ -1104,7 +1104,7 @@ function submitBuyActivity() {
                   onClick={confirmPendingAction}
                   type="button"
                 >
-                  {confirmAction.type === "switchAccount" ? "Switch account" : "Delete"}
+                  {confirmAction.type === "logout" ? "Log out" : "Delete"}
                 </button>
               </div>
             </div>
@@ -1122,14 +1122,25 @@ function submitBuyActivity() {
           </div>
 
           <div className={styles.headerActions}>
-  <button
-    className={styles.secondaryBtn}
-    onClick={() => setConfirmAction({ type: "switchAccount" })}
-    type="button"
-  >
-    Switch account
-  </button>
-</div>
+            <details className={styles.menu}>
+              <summary className={styles.secondaryBtn}>Menu</summary>
+              <div className={styles.menuDropdown}>
+                <a className={styles.menuItem} href="/stats">
+                  Stats
+                </a>
+                <a className={styles.menuItem} href="/profile">
+                  My Profile
+                </a>
+                <button
+                  className={`${styles.menuItem} ${styles.menuItemDanger}`}
+                  onClick={() => setConfirmAction({ type: "logout" })}
+                  type="button"
+                >
+                  Log Out
+                </button>
+              </div>
+            </details>
+          </div>
         </header>
 
         {storeError ? <div className={styles.syncWarning}>{storeError}</div> : null}

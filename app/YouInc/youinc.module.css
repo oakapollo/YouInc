@@ -99,6 +99,59 @@
   background: rgba(255, 255, 255, 0.02);
 }
 
+.menu {
+  position: relative;
+}
+
+.menu > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.menu > summary::-webkit-details-marker {
+  display: none;
+}
+
+.menuDropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  min-width: 160px;
+  padding: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 14px;
+  background: #0b0b0b;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
+}
+
+.menuItem {
+  display: block;
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.25;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 160ms ease, color 160ms ease;
+}
+
+.menuItem:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #ffffff;
+}
+
+.menuItemDanger {
+  color: rgba(253, 164, 175, 0.95);
+}
+
 .syncWarning {
   @apply mt-3 rounded-2xl border px-4 py-3 text-sm;
   border-color: rgba(251, 191, 36, 0.25);
