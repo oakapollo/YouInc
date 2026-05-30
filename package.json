@@ -7,7 +7,7 @@
         "build": "next build",
         "start": "next start",
         "lint": "next lint",
-        "test": "node --test app/YouInc/rules.test.ts"
+        "test": "node --test app/YouInc/rules.test.ts app/stats/stats.test.ts"
     },
     "dependencies": {
         "firebase": "^12.12.0",
