@@ -7,8 +7,7 @@ module.exports = {
         args: "run start -- -p 4001",
         env: {
           NODE_ENV: "production",
-          YOUINC_SYNC_KEY: "margo777",
-          NEXT_PUBLIC_YOUINC_SYNC_KEY: "margo777",
+          YOUINC_SYNC_KEY: process.env.YOUINC_SYNC_KEY,
           GOOGLE_APPLICATION_CREDENTIALS: "/var/www/secrets/firebase-admin.json",
         },
       },

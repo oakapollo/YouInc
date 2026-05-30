@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { db } from "../../YouInc/firebaseAdmin";
 export const runtime = "nodejs"; // IMPORTANT: firebase-admin needs node runtime
 
+// Legacy compatibility route. The signed-in app uses users/{uid}/store/main directly.
+// Keep this path stable until any existing single-user deployment has been migrated.
 export async function POST(req: Request) {
   try {
     const key = req.headers.get("x-youinc-key");
