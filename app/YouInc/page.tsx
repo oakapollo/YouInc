@@ -1123,7 +1123,7 @@ function submitBuyActivity() {
 
           <div className={styles.headerActions}>
             <details className={styles.menu}>
-              <summary className={styles.secondaryBtn}>Menu</summary>
+              <summary className={styles.menuButton}>Menu</summary>
               <div className={styles.menuDropdown}>
                 <a className={styles.menuItem} href="/stats">
                   Stats

@@ -76,6 +76,8 @@
 
 .headerActions {
   @apply flex items-center gap-2;
+  margin-left: auto;
+  flex-shrink: 0;
 }
 
 .addBtn {
@@ -101,6 +103,7 @@
 
 .menu {
   position: relative;
+  display: inline-block;
 }
 
 .menu > summary {
@@ -112,16 +115,39 @@
   display: none;
 }
 
+.menuButton {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 9px 15px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 9px;
+  background: #111111;
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1;
+  transition: background 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.menuButton:hover {
+  border-color: rgba(255, 255, 255, 0.26);
+  background: #171717;
+  color: #ffffff;
+}
+
 .menuDropdown {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + 6px);
   right: 0;
+  left: auto;
   z-index: 30;
   display: grid;
-  min-width: 160px;
+  width: 180px;
+  max-width: calc(100vw - 32px);
   padding: 6px;
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
+  border-radius: 10px;
   background: #0b0b0b;
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.42);
 }
@@ -130,8 +156,8 @@
   display: block;
   width: 100%;
   border: 0;
-  border-radius: 10px;
-  padding: 9px 10px;
+  border-radius: 7px;
+  padding: 10px 11px;
   background: transparent;
   color: rgba(255, 255, 255, 0.78);
   font-size: 13px;
@@ -765,11 +791,11 @@
 
 @media (max-width: 767px) {
   .header {
-    @apply flex-col items-stretch;
+    @apply items-start;
   }
 
   .headerActions {
-    @apply justify-between;
+    @apply justify-end;
   }
 
   .panelHeaderCopy {
