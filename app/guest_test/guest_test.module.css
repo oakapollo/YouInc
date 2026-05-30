@@ -1,0 +1,165 @@
+.page {
+  min-height: 100svh;
+  padding-bottom: 150px;
+  background: #000;
+  color: #f5f5f5;
+}
+
+.shell {
+  width: min(100%, 66rem);
+  margin: 0 auto;
+  padding: 28px 20px;
+}
+
+.header, .sectionHeader, .hero, .metricTabs, .itemCard, .itemActions, .logRow, .tourProgress, .tourActions, .viewTabs, .chartFilters {
+  display: flex;
+  align-items: center;
+}
+
+.header, .sectionHeader, .hero, .tourProgress {
+  justify-content: space-between;
+}
+
+.header {
+  gap: 16px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+}
+
+.eyebrow, .hero span, .insightGrid span, .demoBadge {
+  color: rgba(255,255,255,.48);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.header h1 { margin: 5px 0 0; font-size: 22px; }
+.header p, .sectionHeader p, .itemCard p { margin: 5px 0 0; color: rgba(255,255,255,.54); font-size: 13px; }
+
+.accountButton, .sectionHeader button, .viewTabs button, .chartFilters button, .itemActions button, .tourActions button, .restartTour {
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 9px;
+  background: #111;
+  color: rgba(255,255,255,.84);
+  cursor: pointer;
+}
+
+.accountButton { padding: 10px 13px; font-size: 13px; font-weight: 800; }
+.viewTabs { gap: 7px; margin-top: 18px; }
+.viewTabs button, .chartFilters button { padding: 8px 11px; font-size: 12px; font-weight: 800; }
+.viewTabActive, .chartFilterActive { background: #f5f5f5 !important; color: #000 !important; }
+
+.hero, .section {
+  margin-top: 14px;
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 18px;
+  background: #0b0b0b;
+}
+
+.hero { gap: 14px; padding: 18px; }
+.hero div { display: grid; gap: 7px; }
+.hero strong { font-size: 20px; }
+.positive { color: #6ee7b7 !important; }
+.negative { color: #fda4af !important; }
+
+.section { padding: 18px; }
+.sectionHeader { gap: 12px; }
+.sectionHeader h2 { margin: 0; font-size: 18px; }
+.sectionHeader button { flex-shrink: 0; padding: 9px 11px; font-size: 12px; font-weight: 800; }
+
+.metricTabs { gap: 8px; margin-top: 16px; overflow-x: auto; }
+.metricTabs button {
+  min-width: 112px; padding: 11px; border: 1px solid rgba(255,255,255,.08); border-radius: 10px;
+  background: #101010; color: rgba(255,255,255,.62); text-align: left; cursor: pointer;
+}
+.metricTabs span { display: block; font-size: 11px; font-weight: 800; text-transform: uppercase; }
+.metricTabs strong { display: block; margin-top: 5px; color: #f5f5f5; font-size: 20px; }
+.metricTabActive { border-color: rgba(255,255,255,.35) !important; background: #181818 !important; }
+
+.itemList, .logList { display: grid; gap: 9px; margin-top: 14px; }
+.itemCard, .logRow { justify-content: space-between; gap: 12px; border: 1px solid rgba(255,255,255,.08); border-radius: 11px; padding: 12px; background: #101010; }
+.itemCard h3 { margin: 0; font-size: 15px; }
+.itemActions { gap: 7px; flex-shrink: 0; }
+.itemActions button { padding: 8px 10px; font-size: 12px; font-weight: 800; }
+.holdButton { color: #a7f3d0 !important; }
+.soldButton { color: #fda4af !important; }
+
+.chartFilters { gap: 5px; }
+.chart { margin-top: 18px; }
+.chart svg { display: block; width: 100%; height: 220px; overflow: visible; }
+.chartArea { fill: rgba(16,185,129,.08); }
+.chartLine { fill: none; stroke: #34d399; stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.chartLabels { display: flex; justify-content: space-between; margin-top: 8px; color: rgba(255,255,255,.38); font-size: 11px; }
+
+.logRow span { display: block; margin-top: 4px; color: rgba(255,255,255,.48); font-size: 12px; }
+.logRow b { flex-shrink: 0; font-size: 13px; }
+
+.tourCard {
+  position: fixed; right: 18px; bottom: 18px; z-index: 100; width: min(390px, calc(100vw - 36px));
+  border: 1px solid rgba(255,255,255,.18); border-radius: 16px; padding: 16px; background: rgba(11,11,11,.96);
+  box-shadow: 0 24px 80px rgba(0,0,0,.72); backdrop-filter: blur(14px);
+  animation: tourIn .28s ease both;
+}
+.tourProgress { color: rgba(255,255,255,.48); font-size: 11px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
+.tourCard h2 { margin: 12px 0 0; font-size: 20px; }
+.tourCard p { margin: 8px 0 0; color: rgba(255,255,255,.64); font-size: 14px; line-height: 1.5; }
+.tourActions { justify-content: flex-end; gap: 8px; margin-top: 15px; }
+.tourActions button { padding: 9px 11px; font-size: 12px; font-weight: 800; }
+.nextButton { background: #f5f5f5 !important; color: #000 !important; }
+.skipButton { color: rgba(255,255,255,.58) !important; }
+.restartTour { position: fixed; right: 16px; bottom: 16px; z-index: 90; padding: 10px 12px; font-size: 12px; font-weight: 800; }
+
+.tourTarget {
+  position: relative; z-index: 4; border-color: rgba(255,255,255,.72) !important;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.12), 0 0 30px rgba(255,255,255,.12);
+  animation: targetPulse 1.1s ease-in-out infinite alternate;
+}
+
+.flash {
+  position: fixed; top: 16px; left: 50%; z-index: 110; transform: translateX(-50%);
+  border: 1px solid rgba(110,231,183,.35); border-radius: 10px; padding: 10px 13px;
+  background: rgba(6,78,59,.94); color: #d1fae5; font-size: 13px; font-weight: 800;
+}
+
+.insightGrid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; margin-top: 16px; }
+.insightGrid div { display: grid; gap: 7px; border: 1px solid rgba(255,255,255,.08); border-radius: 11px; padding: 12px; background: #101010; }
+.insightGrid strong { font-size: 13px; }
+.weekdayChart { display: grid; gap: 10px; margin-top: 20px; }
+.zeroLabel { margin: 0 61px 0 38px; color: rgba(255,255,255,.4); font-size: 11px; font-weight: 800; text-align: center; }
+.weekdayRow { display: grid; grid-template-columns: 30px minmax(0,1fr) 55px; align-items: center; gap: 8px; }
+.weekdayRow b { color: rgba(255,255,255,.54); font-size: 12px; }
+.weekdayRow > div { position: relative; height: 18px; overflow: hidden; border-radius: 5px; background: rgba(255,255,255,.035); }
+.weekdayRow i { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(255,255,255,.4); }
+.weekdayRow span { position: absolute; top: 4px; bottom: 4px; border-radius: 3px; }
+.weekdayRow strong { font-size: 12px; text-align: right; }
+.dayPositive { background: #10b981; }
+.dayNegative { background: #f43f5e; }
+.demoBadge { flex-shrink: 0; border: 1px solid rgba(255,255,255,.1); border-radius: 999px; padding: 7px 9px; background: #111; }
+
+.tableBlock { margin-top: 18px; }
+.tableBlock h3 { margin: 0 0 8px; font-size: 14px; }
+.table { overflow: hidden; border: 1px solid rgba(255,255,255,.08); border-radius: 10px; }
+.tableHead, .tableRow { display: grid; grid-template-columns: minmax(0,1fr) 58px minmax(100px,.5fr); gap: 8px; padding: 10px 11px; border-top: 1px solid rgba(255,255,255,.07); font-size: 13px; }
+.tableHead { border-top: 0; background: #101010; color: rgba(255,255,255,.42); font-size: 10px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.tableRow { color: rgba(255,255,255,.66); }
+.tableRow strong { color: rgba(255,255,255,.9); }
+
+@keyframes targetPulse { from { box-shadow: 0 0 0 2px rgba(255,255,255,.08); } to { box-shadow: 0 0 0 4px rgba(255,255,255,.18), 0 0 32px rgba(255,255,255,.14); } }
+@keyframes tourIn { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 640px) {
+  .shell { padding: 18px 14px; }
+  .header { align-items: flex-start; }
+  .header p { max-width: 210px; }
+  .hero { display: grid; grid-template-columns: 1fr 1fr; }
+  .hero div:last-child { grid-column: 1 / -1; }
+  .section { padding: 14px; }
+  .itemCard { align-items: flex-start; display: grid; }
+  .itemActions { width: 100%; }
+  .itemActions button { flex: 1; }
+  .chart svg { height: 170px; }
+  .insightGrid { grid-template-columns: 1fr; }
+  .tableHead, .tableRow { grid-template-columns: minmax(0,1fr) 38px 88px; gap: 6px; padding: 9px; font-size: 12px; }
+  .tableHead { font-size: 9px; }
+}
