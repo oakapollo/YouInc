@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildStats, getTimeframeStart, parseBehaviourLabel, type Tx } from "./stats.ts";
+import { buildStats, getCustomPeriodBounds, getTimeframeStart, parseBehaviourLabel, type Tx } from "./stats.ts";
 
 const monday = Date.parse("2026-05-25T12:00:00Z");
 const tuesday = Date.parse("2026-05-26T12:00:00Z");
@@ -50,6 +50,28 @@ test("timeframe filtering keeps earlier transactions in the reconstructed price 
   const stats = buildStats(tx, 10200, tuesday);
   assert.equal(stats.logCount, 1);
   assert.equal(stats.weekdayGrowth[2].averageGrowthPct, 100 / 101);
+});
+
+test("custom period filtering includes both selected London calendar days", () => {
+  const bounds = getCustomPeriodBounds("2026-05-26", "2026-05-26");
+  assert.deepEqual(bounds, {
+    startTs: Date.parse("2026-05-25T23:00:00Z"),
+    endExclusiveTs: Date.parse("2026-05-26T23:00:00Z"),
+  });
+
+  const tx: Tx[] = [
+    { id: "3", ts: Date.parse("2026-05-26T23:00:00Z"), deltaUC: 100, label: "Read (Good habit · Hold)" },
+    { id: "2", ts: Date.parse("2026-05-26T12:00:00Z"), deltaUC: 100, label: "Read (Good habit · Hold)" },
+    { id: "1", ts: Date.parse("2026-05-25T22:59:59Z"), deltaUC: 100, label: "Read (Good habit · Hold)" },
+  ];
+
+  assert.equal(buildStats(tx, 10300, bounds.startTs, bounds.endExclusiveTs).logCount, 1);
+});
+
+test("custom period bounds reject missing dates and reversed ranges", () => {
+  assert.equal(getCustomPeriodBounds("", "2026-05-26"), null);
+  assert.equal(getCustomPeriodBounds("2026-05-27", "2026-05-26"), null);
+  assert.equal(getCustomPeriodBounds("2026-02-31", "2026-03-02"), null);
 });
 
 test("getTimeframeStart supports all filters", () => {

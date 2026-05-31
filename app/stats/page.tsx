@@ -8,6 +8,7 @@ import { db } from "../../lib/firebase";
 import styles from "../YouInc/youinc.module.css";
 import {
   buildStats,
+  getCustomPeriodBounds,
   getTimeframeStart,
   type BehaviourCategory,
   type StatsResult,
@@ -29,12 +30,16 @@ export default function StatsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
   const [timeframe, setTimeframe] = useState<StatsTimeframe>("1m");
+  const [customPeriodOpen, setCustomPeriodOpen] = useState(false);
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
   const [tx, setTx] = useState<Tx[]>([]);
   const [marketCapUC, setMarketCapUC] = useState(10000);
   const [stats, setStats] = useState<StatsResult>(EMPTY_STATS);
   const [dataLoading, setDataLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const customBounds = useMemo(() => getCustomPeriodBounds(customFrom, customTo), [customFrom, customTo]);
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
@@ -65,14 +70,22 @@ export default function StatsPage() {
   useEffect(() => {
     if (dataLoading) return;
 
+    if (customPeriodOpen && !customBounds) {
+      setStats(EMPTY_STATS);
+      setProcessing(false);
+      return;
+    }
+
     setProcessing(true);
     const timer = window.setTimeout(() => {
-      setStats(buildStats(tx, marketCapUC, getTimeframeStart(timeframe)));
+      const startTs = customPeriodOpen ? customBounds?.startTs ?? null : getTimeframeStart(timeframe);
+      const endExclusiveTs = customPeriodOpen ? customBounds?.endExclusiveTs ?? null : null;
+      setStats(buildStats(tx, marketCapUC, startTs, endExclusiveTs));
       setProcessing(false);
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [dataLoading, marketCapUC, timeframe, tx]);
+  }, [customBounds, customPeriodOpen, dataLoading, marketCapUC, timeframe, tx]);
 
   const chartScale = useMemo(
     () => Math.max(0.01, ...stats.weekdayGrowth.map((day) => Math.abs(day.averageGrowthPct))),
@@ -104,13 +117,37 @@ export default function StatsPage() {
             <button
               className={`${styles.statsTfBtn} ${timeframe === option ? styles.statsTfBtnActive : ""}`}
               key={option}
-              onClick={() => setTimeframe(option)}
+              onClick={() => {
+                setCustomPeriodOpen(false);
+                setTimeframe(option);
+              }}
               type="button"
             >
               {option.toUpperCase()}
             </button>
           ))}
+          <button
+            className={`${styles.statsTfBtn} ${customPeriodOpen ? styles.statsTfBtnActive : ""}`}
+            onClick={() => setCustomPeriodOpen(true)}
+            type="button"
+          >
+            Custom period
+          </button>
         </div>
+
+        {customPeriodOpen ? (
+          <div className={styles.statsCustomPeriod}>
+            <label>
+              From
+              <input max={customTo || undefined} onChange={(event) => setCustomFrom(event.target.value)} type="date" value={customFrom} />
+            </label>
+            <label>
+              To
+              <input min={customFrom || undefined} onChange={(event) => setCustomTo(event.target.value)} type="date" value={customTo} />
+            </label>
+            {!customBounds ? <span>Choose a valid start and end date.</span> : null}
+          </div>
+        ) : null}
 
         {error ? <div className={styles.syncWarning}>{error}</div> : null}
 

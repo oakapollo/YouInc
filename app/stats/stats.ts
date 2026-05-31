@@ -40,7 +40,22 @@ export function getTimeframeStart(timeframe: StatsTimeframe, now = Date.now()) {
   return now - days * 24 * 60 * 60 * 1000;
 }
 
-export function buildStats(txDesc: Tx[], currentMarketCapUC: number, startTs: number | null): StatsResult {
+export function getCustomPeriodBounds(fromDate: string, toDate: string) {
+  if (!isIsoDate(fromDate) || !isIsoDate(toDate)) return null;
+
+  const startTs = getLondonDayStart(fromDate);
+  const endExclusiveTs = getLondonDayStart(addUtcDays(toDate, 1));
+
+  if (startTs >= endExclusiveTs) return null;
+  return { startTs, endExclusiveTs };
+}
+
+export function buildStats(
+  txDesc: Tx[],
+  currentMarketCapUC: number,
+  startTs: number | null,
+  endExclusiveTs: number | null = null
+): StatsResult {
   const txAsc = [...txDesc].sort((a, b) => a.ts - b.ts);
   let runningCapUC = Math.max(0, currentMarketCapUC - txAsc.reduce((total, tx) => total + tx.deltaUC, 0));
   const growthByDay = DAY_LABELS.map(() => ({ totalPct: 0, count: 0 }));
@@ -51,7 +66,7 @@ export function buildStats(txDesc: Tx[], currentMarketCapUC: number, startTs: nu
     const capBeforeUC = runningCapUC;
     runningCapUC = Math.max(0, runningCapUC + tx.deltaUC);
 
-    if (startTs !== null && tx.ts < startTs) continue;
+    if ((startTs !== null && tx.ts < startTs) || (endExclusiveTs !== null && tx.ts >= endExclusiveTs)) continue;
 
     const dayIndex = getLondonDayIndex(tx.ts);
     const growthPct = capBeforeUC > 0 ? (tx.deltaUC / capBeforeUC) * 100 : 0;
@@ -87,6 +102,36 @@ export function buildStats(txDesc: Tx[], currentMarketCapUC: number, startTs: nu
     behaviourRows: buildBehaviourRows(behaviourCounts),
     logCount,
   };
+}
+
+function isIsoDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+}
+
+function addUtcDays(value: string, days: number) {
+  const date = new Date(`${value}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getLondonDayStart(value: string) {
+  const utcMidnight = Date.parse(`${value}T00:00:00Z`);
+  return utcMidnight - getLondonOffsetMinutes(new Date(utcMidnight)) * 60 * 1000;
+}
+
+function getLondonOffsetMinutes(now: Date) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    timeZoneName: "shortOffset",
+  }).formatToParts(now);
+  const tz = parts.find((part) => part.type === "timeZoneName")?.value ?? "GMT";
+  const match = tz.match(/GMT([+-])(\d{1,2})(?::(\d{2}))?/);
+
+  if (!match) return 0;
+  const sign = match[1] === "-" ? -1 : 1;
+  return sign * (Number(match[2] ?? 0) * 60 + Number(match[3] ?? 0));
 }
 
 export function parseBehaviourLabel(label: string) {
