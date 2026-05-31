@@ -162,7 +162,7 @@ export default function StatsPage() {
           <div className={styles.statsPanelHeader}>
             <div>
               <h2>Average growth by day</h2>
-              <p>Average percentage price movement from your behaviour logs, grouped by London weekday.</p>
+              <p>Average close-to-close daily price movement, grouped by London weekday.</p>
             </div>
             <span>{stats.logCount} logs</span>
           </div>

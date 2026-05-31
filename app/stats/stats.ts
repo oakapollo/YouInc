@@ -54,24 +54,27 @@ export function buildStats(
   txDesc: Tx[],
   currentMarketCapUC: number,
   startTs: number | null,
-  endExclusiveTs: number | null = null
+  endExclusiveTs: number | null = null,
+  now = Date.now()
 ): StatsResult {
   const txAsc = [...txDesc].sort((a, b) => a.ts - b.ts);
   let runningCapUC = Math.max(0, currentMarketCapUC - txAsc.reduce((total, tx) => total + tx.deltaUC, 0));
   const growthByDay = DAY_LABELS.map(() => ({ totalPct: 0, count: 0 }));
   const behaviourCounts = new Map<string, { category: BehaviourCategory; title: string; count: number; days: number[] }>();
+  const closedDayEndTs = Math.min(endExclusiveTs ?? Number.POSITIVE_INFINITY, getLondonDayStart(getLondonDateKey(now)));
+  const dailyCloseUC = new Map<string, number>();
   let logCount = 0;
 
   for (const tx of txAsc) {
-    const capBeforeUC = runningCapUC;
     runningCapUC = Math.max(0, runningCapUC + tx.deltaUC);
+
+    if (tx.ts < closedDayEndTs) {
+      dailyCloseUC.set(getLondonDateKey(tx.ts), runningCapUC);
+    }
 
     if ((startTs !== null && tx.ts < startTs) || (endExclusiveTs !== null && tx.ts >= endExclusiveTs)) continue;
 
     const dayIndex = getLondonDayIndex(tx.ts);
-    const growthPct = capBeforeUC > 0 ? (tx.deltaUC / capBeforeUC) * 100 : 0;
-    growthByDay[dayIndex].totalPct += growthPct;
-    growthByDay[dayIndex].count += 1;
     logCount += 1;
 
     const behaviour = parseBehaviourLabel(tx.label);
@@ -83,6 +86,8 @@ export function buildStats(
     current.days[dayIndex] += 1;
     behaviourCounts.set(key, current);
   }
+
+  addClosedDayGrowth(growthByDay, dailyCloseUC, txAsc, currentMarketCapUC, startTs, closedDayEndTs);
 
   const weekdayGrowth = DAY_LABELS.map((label, dayIndex) => {
     const day = growthByDay[dayIndex];
@@ -104,6 +109,36 @@ export function buildStats(
   };
 }
 
+function addClosedDayGrowth(
+  growthByDay: { totalPct: number; count: number }[],
+  dailyCloseUC: Map<string, number>,
+  txAsc: Tx[],
+  currentMarketCapUC: number,
+  startTs: number | null,
+  closedDayEndTs: number
+) {
+  if (txAsc.length === 0) return;
+
+  let previousCloseUC = Math.max(0, currentMarketCapUC - txAsc.reduce((total, tx) => total + tx.deltaUC, 0));
+  let dateKey = getLondonDateKey(txAsc[0].ts);
+
+  while (getLondonDayStart(dateKey) < closedDayEndTs) {
+    const dayStartTs = getLondonDayStart(dateKey);
+    const nextDateKey = addUtcDays(dateKey, 1);
+    const dayEndTs = getLondonDayStart(nextDateKey);
+    const closeUC = dailyCloseUC.get(dateKey) ?? previousCloseUC;
+
+    if ((startTs === null || dayEndTs > startTs) && previousCloseUC > 0) {
+      const dayIndex = getLondonDayIndex(dayStartTs);
+      growthByDay[dayIndex].totalPct += ((closeUC - previousCloseUC) / previousCloseUC) * 100;
+      growthByDay[dayIndex].count += 1;
+    }
+
+    previousCloseUC = closeUC;
+    dateKey = nextDateKey;
+  }
+}
+
 function isIsoDate(value: string) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const parsed = new Date(`${value}T00:00:00Z`);
@@ -119,6 +154,15 @@ function addUtcDays(value: string, days: number) {
 function getLondonDayStart(value: string) {
   const utcMidnight = Date.parse(`${value}T00:00:00Z`);
   return utcMidnight - getLondonOffsetMinutes(new Date(utcMidnight)) * 60 * 1000;
+}
+
+function getLondonDateKey(ts: number) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ts));
 }
 
 function getLondonOffsetMinutes(now: Date) {

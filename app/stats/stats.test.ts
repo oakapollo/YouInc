@@ -20,7 +20,7 @@ test("buildStats reconstructs percentage movement and ranks weekdays", () => {
     { id: "1", ts: monday, deltaUC: 100, label: "Run (Good habit · Hold)" },
   ];
 
-  const stats = buildStats(tx, 10200, null);
+  const stats = buildStats(tx, 10200, null, null, Date.parse("2026-05-28T12:00:00Z"));
   assert.equal(stats.logCount, 3);
   assert.equal(stats.weekdayGrowth[1].averageGrowthPct, 1);
   assert.ok(stats.weekdayGrowth[2].averageGrowthPct < 0);
@@ -36,20 +36,34 @@ test("buildStats returns top three behaviours per category with the most active 
     { id: "1", ts: monday, deltaUC: -10, label: "Sugar (Bad habit · Sold)" },
   ];
 
-  const stats = buildStats(tx, 10020, null);
+  const stats = buildStats(tx, 10020, null, null, Date.parse("2026-05-28T12:00:00Z"));
   assert.deepEqual(stats.behaviourRows[0], { category: "good", title: "Read", count: 3, mostLoggedDay: "Monday" });
   assert.deepEqual(stats.behaviourRows[1], { category: "bad", title: "Sugar", count: 1, mostLoggedDay: "Monday" });
 });
 
-test("timeframe filtering keeps earlier transactions in the reconstructed price baseline", () => {
+test("weekday growth uses the daily close compared with the previous daily close", () => {
+  const tx: Tx[] = [
+    { id: "3", ts: tuesday + 1000, deltaUC: 100, label: "Read (Good habit · Hold)" },
+    { id: "2", ts: tuesday, deltaUC: 100, label: "Read (Good habit · Hold)" },
+    { id: "1", ts: monday, deltaUC: 100, label: "Read (Good habit · Hold)" },
+  ];
+
+  const stats = buildStats(tx, 10300, null, null, Date.parse("2026-05-28T12:00:00Z"));
+  assert.equal(stats.logCount, 3);
+  assert.equal(stats.weekdayGrowth[1].averageGrowthPct, 1);
+  assert.equal(stats.weekdayGrowth[2].averageGrowthPct, 200 / 101);
+});
+
+test("weekday growth excludes the current London day until its candle closes", () => {
   const tx: Tx[] = [
     { id: "2", ts: tuesday, deltaUC: 100, label: "Read (Good habit · Hold)" },
     { id: "1", ts: monday, deltaUC: 100, label: "Read (Good habit · Hold)" },
   ];
 
-  const stats = buildStats(tx, 10200, tuesday);
-  assert.equal(stats.logCount, 1);
-  assert.equal(stats.weekdayGrowth[2].averageGrowthPct, 100 / 101);
+  const stats = buildStats(tx, 10200, null, null, Date.parse("2026-05-26T18:00:00Z"));
+  assert.equal(stats.logCount, 2);
+  assert.equal(stats.weekdayGrowth[1].averageGrowthPct, 1);
+  assert.equal(stats.weekdayGrowth[2].logCount, 0);
 });
 
 test("custom period filtering includes both selected London calendar days", () => {
@@ -65,7 +79,7 @@ test("custom period filtering includes both selected London calendar days", () =
     { id: "1", ts: Date.parse("2026-05-25T22:59:59Z"), deltaUC: 100, label: "Read (Good habit · Hold)" },
   ];
 
-  assert.equal(buildStats(tx, 10300, bounds.startTs, bounds.endExclusiveTs).logCount, 1);
+  assert.equal(buildStats(tx, 10300, bounds.startTs, bounds.endExclusiveTs, Date.parse("2026-05-28T12:00:00Z")).logCount, 1);
 });
 
 test("custom period bounds reject missing dates and reversed ranges", () => {
