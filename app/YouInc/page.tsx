@@ -98,6 +98,7 @@ type Store = {
   goodHabits: GoodHabit[];
   badHabits: BadHabit[];
   addictions: Addiction[];
+  skippedLogDates?: string[];
 
 
   // NEW: tracks the last hour-bucket we processed decay for (ms since epoch, floored to hour)
@@ -288,7 +289,13 @@ function getPreviousBucketStartUtcMs(bucketStartUtcMs: number, timeframe: "1d" |
   return ukWallMsToUtcMs(Date.UTC(year, month - 1, 1));
 }
 
-function buildCandles(startCapUC: number, txAsc: Tx[], timeframe: "1d" | "3d" | "1w" | "1m", lookbackBuckets: number): Candle[] {
+function buildCandles(
+  startCapUC: number,
+  txAsc: Tx[],
+  timeframe: "1d" | "3d" | "1w" | "1m",
+  lookbackBuckets: number,
+  skippedLogDates: string[] = []
+): Candle[] {
   const now = Date.now();
   const endBucket = getBucketStartUtcMs(now, timeframe);
   const earliestTx = txAsc[0]?.ts ?? endBucket;
@@ -352,7 +359,9 @@ function buildCandles(startCapUC: number, txAsc: Tx[], timeframe: "1d" | "3d" | 
     });
   }
 
-  return candles;
+  if (timeframe !== "1d" || skippedLogDates.length === 0) return candles;
+  const skipped = new Set(skippedLogDates);
+  return candles.filter((candle) => !skipped.has(getUkDateKey(candle.t)));
 }
 
 // --- UK hour-bucket helpers for decay (DST-safe via Europe/London offset) ---
@@ -360,6 +369,20 @@ const HOUR_MS = 60 * 60 * 1000;
 
 function getUkWallMs(now: Date) {
   return now.getTime() + getUkOffsetMinutes(now) * 60 * 1000;
+}
+
+function getUkDateKey(ts: number) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ts));
+}
+
+function getBackfillTimestamp(dateKey: string) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return ukWallMsToUtcMs(Date.UTC(year, month - 1, day, 12, 0, 0, Date.now() % 1000));
 }
 
 function ukWallMsToUtcMs(ukWallMs: number) {
@@ -467,10 +490,17 @@ export default function YouIncPage() {
 
   // ⏱️ Real-time tick (needed for 1m chart to "move" even without actions)
   const [nowTick, setNowTick] = useState(0);
+  const [backfillDate, setBackfillDate] = useState<string | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => setNowTick(Date.now()), 60 * 1000);
     return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const date = params.get("backfill");
+    if (/^\d{4}-\d{2}-\d{2}$/.test(date ?? "")) setBackfillDate(date);
   }, []);
 
   useEffect(() => {
@@ -558,6 +588,7 @@ export default function YouIncPage() {
                 goodHabits: Array.isArray(data.goodHabits) ? (data.goodHabits as GoodHabit[]) : prev.goodHabits,
                 badHabits: Array.isArray(data.badHabits) ? (data.badHabits as BadHabit[]) : prev.badHabits,
                 addictions: Array.isArray(data.addictions) ? (data.addictions as Addiction[]) : prev.addictions,
+                skippedLogDates: Array.isArray(data.skippedLogDates) ? (data.skippedLogDates as string[]) : prev.skippedLogDates,
                 lastDecayHourTs: typeof data.lastDecayHourTs === "number" ? data.lastDecayHourTs : prev.lastDecayHourTs,
               }));
             }
@@ -618,7 +649,7 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
   const sign = preview > 0 ? "+" : "";
   const readableLabel = label.replace(/\s\([^)]*\)$/g, "").replace(/^BUY:\s*/i, "");
   const txId = uid();
-  const txTs = Date.now();
+  const txTs = backfillDate ? getBackfillTimestamp(backfillDate) : Date.now();
 
   setLogFlash({
     id: uid(),
@@ -640,7 +671,12 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
       label: taxed ? `${label} (taxed)` : label,
     };
 
-    return { ...s, marketCapUC: nextCap, tx: [tx, ...s.tx].slice(0, 2000) };
+    return {
+      ...s,
+      marketCapUC: nextCap,
+      tx: [tx, ...s.tx].slice(0, 2000),
+      skippedLogDates: backfillDate ? (s.skippedLogDates ?? []).filter((date) => date !== backfillDate) : s.skippedLogDates,
+    };
   });
 }
 
@@ -786,11 +822,11 @@ function submitBuyActivity() {
 
 
   const candles = useMemo(() => {
-    if (tf === "3d") return buildCandles(store.marketCapUC, txAsc, "3d", 40);
-    if (tf === "1w") return buildCandles(store.marketCapUC, txAsc, "1w", 26);
-    if (tf === "1m") return buildCandles(store.marketCapUC, txAsc, "1m", 18);
-    return buildCandles(store.marketCapUC, txAsc, "1d", 60);
-  }, [tf, store.marketCapUC, txAsc, nowTick]);
+    if (tf === "3d") return buildCandles(store.marketCapUC, txAsc, "3d", 40, store.skippedLogDates);
+    if (tf === "1w") return buildCandles(store.marketCapUC, txAsc, "1w", 26, store.skippedLogDates);
+    if (tf === "1m") return buildCandles(store.marketCapUC, txAsc, "1m", 18, store.skippedLogDates);
+    return buildCandles(store.marketCapUC, txAsc, "1d", 60, store.skippedLogDates);
+  }, [tf, store.marketCapUC, store.skippedLogDates, txAsc, nowTick]);
 
   const tfChangePct = useMemo(() => {
     if (!candles || candles.length < 2) return 0;
@@ -1076,6 +1112,16 @@ function submitBuyActivity() {
       <div className={styles.glowC} />
 
       <div className={styles.shell}>
+        {backfillDate ? (
+          <div className={styles.backfillBanner}>
+            <div>
+              <strong>Adding logs for {backfillDate}</strong>
+              <span>Use your usual dashboard actions. New logs will be saved against this date.</span>
+            </div>
+            <a href={`/stats?repair=${backfillDate}`}>Finish</a>
+          </div>
+        ) : null}
+
         {logFlash ? (
           <div key={logFlash.id} className={styles.logFlash} role="status" aria-live="polite">
             <span className={styles.logFlashDot}>✓</span>

@@ -1,6 +1,6 @@
 "use client";
 
-import { doc, onSnapshot } from "firebase/firestore";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../providers";
@@ -9,6 +9,8 @@ import styles from "../YouInc/youinc.module.css";
 import {
   buildStats,
   getCustomPeriodBounds,
+  getLondonDateKey,
+  getLondonDayStart,
   getTimeframeStart,
   type BehaviourCategory,
   type StatsResult,
@@ -35,11 +37,35 @@ export default function StatsPage() {
   const [customTo, setCustomTo] = useState("");
   const [tx, setTx] = useState<Tx[]>([]);
   const [marketCapUC, setMarketCapUC] = useState(10000);
+  const [skippedLogDates, setSkippedLogDates] = useState<string[]>([]);
+  const [repairDate, setRepairDate] = useState("");
+  const [skipping, setSkipping] = useState(false);
+  const [showMissedDate, setShowMissedDate] = useState(false);
   const [stats, setStats] = useState<StatsResult>(EMPTY_STATS);
   const [dataLoading, setDataLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const customBounds = useMemo(() => getCustomPeriodBounds(customFrom, customTo), [customFrom, customTo]);
+  const todayLondon = getLondonDateKey(Date.now());
+  const yesterdayLondon = getLondonDateKey(getLondonDayStart(todayLondon) - 1);
+  const selectedDayTx = useMemo(() => {
+    if (!repairDate) return [];
+    const start = getLondonDayStart(repairDate);
+    const end = getLondonDayStart(getNextDateKey(repairDate));
+    return tx.filter((entry) => entry.ts >= start && entry.ts < end).sort((a, b) => b.ts - a.ts);
+  }, [repairDate, tx]);
+  const selectedBehaviourTx = useMemo(() => selectedDayTx.filter((entry) => !isDecayTx(entry)), [selectedDayTx]);
+  const selectedDateSkipped = skippedLogDates.includes(repairDate);
+  const missedLogs = Boolean(repairDate) && selectedBehaviourTx.length === 0 && !selectedDateSkipped;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setRepairDate(params.get("repair") || yesterdayLondon);
+  }, [yesterdayLondon]);
+
+  useEffect(() => {
+    setShowMissedDate(false);
+  }, [repairDate]);
 
   useEffect(() => {
     if (!authLoading && !user) router.replace("/login");
@@ -57,6 +83,7 @@ export default function StatsPage() {
         const data = snapshot.data();
         setTx(Array.isArray(data?.tx) ? (data.tx as Tx[]) : []);
         setMarketCapUC(typeof data?.marketCapUC === "number" ? data.marketCapUC : 10000);
+        setSkippedLogDates(Array.isArray(data?.skippedLogDates) ? (data.skippedLogDates as string[]) : []);
         setDataLoading(false);
       },
       (snapshotError) => {
@@ -80,12 +107,28 @@ export default function StatsPage() {
     const timer = window.setTimeout(() => {
       const startTs = customPeriodOpen ? customBounds?.startTs ?? null : getTimeframeStart(timeframe);
       const endExclusiveTs = customPeriodOpen ? customBounds?.endExclusiveTs ?? null : null;
-      setStats(buildStats(tx, marketCapUC, startTs, endExclusiveTs));
+      setStats(buildStats(tx, marketCapUC, startTs, endExclusiveTs, Date.now(), skippedLogDates));
       setProcessing(false);
     }, 0);
 
     return () => window.clearTimeout(timer);
-  }, [customBounds, customPeriodOpen, dataLoading, marketCapUC, timeframe, tx]);
+  }, [customBounds, customPeriodOpen, dataLoading, marketCapUC, skippedLogDates, timeframe, tx]);
+
+  async function skipSelectedDate() {
+    if (!user || !repairDate) return;
+    setSkipping(true);
+    setError(null);
+
+    try {
+      const nextSkippedDates = Array.from(new Set([...skippedLogDates, repairDate])).sort();
+      await setDoc(doc(db, "users", user.uid, "store", "main"), { skippedLogDates: nextSkippedDates }, { merge: true });
+    } catch (skipError) {
+      console.error("Skipping missed logs failed:", skipError);
+      setError("We couldn't skip that date. Check your connection and try again.");
+    } finally {
+      setSkipping(false);
+    }
+  }
 
   const chartScale = useMemo(
     () => Math.max(0.01, ...stats.weekdayGrowth.map((day) => Math.abs(day.averageGrowthPct))),
@@ -216,6 +259,71 @@ export default function StatsPage() {
           <BehaviourTable category="bad" title="Bad habits" rows={stats.behaviourRows} />
           <BehaviourTable category="addiction" title="Addictions" rows={stats.behaviourRows} />
         </section>
+
+        <section className={styles.statsPanel}>
+          <div className={styles.statsPanelHeader}>
+            <div>
+              <h2>Edit previous logs</h2>
+              <p>Review a past day, add anything you missed, or skip a day with no behaviour logs.</p>
+            </div>
+          </div>
+
+          <div className={styles.repairToolbar}>
+            <label>
+              Date
+              <input max={yesterdayLondon} onChange={(event) => setRepairDate(event.target.value)} type="date" value={repairDate} />
+            </label>
+            {repairDate ? (
+              <a className={styles.repairAddButton} href={`/YouInc?backfill=${repairDate}`}>
+                Add logs
+              </a>
+            ) : null}
+            {missedLogs ? (
+              <button className={styles.repairSkipButton} disabled={skipping} onClick={skipSelectedDate} type="button">
+                {skipping ? "Skipping..." : "Skip"}
+              </button>
+            ) : null}
+          </div>
+
+          {repairDate ? (
+            <div className={styles.repairSummary}>
+              <div>
+                <strong>{formatRepairDate(repairDate)}</strong>
+                <span>{selectedBehaviourTx.length} behaviour logs</span>
+              </div>
+              {missedLogs ? (
+                <button className={styles.missedLogsBadge} onClick={() => setShowMissedDate((current) => !current)} type="button">
+                  Missed Logs
+                </button>
+              ) : null}
+              {selectedDateSkipped ? <span className={styles.skippedLogsBadge}>Skipped</span> : null}
+            </div>
+          ) : null}
+
+          {missedLogs && showMissedDate ? <div className={styles.missedLogsDetail}>Logs were missed on {formatRepairDate(repairDate)}.</div> : null}
+
+          <details className={styles.repairLogs}>
+            <summary>Show logs</summary>
+            {selectedDayTx.length ? (
+              <div className={styles.repairLogList}>
+                {selectedDayTx.map((entry) => (
+                  <div className={styles.repairLogItem} key={entry.id}>
+                    <div>
+                      <strong>{entry.label}</strong>
+                      <span>{formatLondonTime(entry.ts)}</span>
+                    </div>
+                    <b className={entry.deltaUC >= 0 ? styles.statsPositive : styles.statsNegative}>
+                      {entry.deltaUC >= 0 ? "+" : ""}
+                      {entry.deltaUC} UC
+                    </b>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <StatsEmpty text="No logs saved for this day." />
+            )}
+          </details>
+        </section>
       </div>
     </main>
   );
@@ -297,4 +405,32 @@ function BehaviourTable({
 
 function formatPercent(value: number) {
   return `${value >= 0 ? "+" : ""}${value.toFixed(3)}%`;
+}
+
+function getNextDateKey(dateKey: string) {
+  const date = new Date(`${dateKey}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
+}
+
+function isDecayTx(tx: Tx) {
+  return /^Decay x\d+$/i.test(tx.label);
+}
+
+function formatRepairDate(dateKey: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  }).format(new Date(getLondonDayStart(dateKey) + 12 * 60 * 60 * 1000));
+}
+
+function formatLondonTime(ts: number) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(ts));
 }

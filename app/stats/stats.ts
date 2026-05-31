@@ -55,7 +55,8 @@ export function buildStats(
   currentMarketCapUC: number,
   startTs: number | null,
   endExclusiveTs: number | null = null,
-  now = Date.now()
+  now = Date.now(),
+  skippedLogDates: string[] = []
 ): StatsResult {
   const txAsc = [...txDesc].sort((a, b) => a.ts - b.ts);
   let runningCapUC = Math.max(0, currentMarketCapUC - txAsc.reduce((total, tx) => total + tx.deltaUC, 0));
@@ -87,7 +88,7 @@ export function buildStats(
     behaviourCounts.set(key, current);
   }
 
-  addClosedDayGrowth(growthByDay, dailyCloseUC, txAsc, currentMarketCapUC, startTs, closedDayEndTs);
+  addClosedDayGrowth(growthByDay, dailyCloseUC, txAsc, currentMarketCapUC, startTs, closedDayEndTs, skippedLogDates);
 
   const weekdayGrowth = DAY_LABELS.map((label, dayIndex) => {
     const day = growthByDay[dayIndex];
@@ -115,7 +116,8 @@ function addClosedDayGrowth(
   txAsc: Tx[],
   currentMarketCapUC: number,
   startTs: number | null,
-  closedDayEndTs: number
+  closedDayEndTs: number,
+  skippedLogDates: string[]
 ) {
   if (txAsc.length === 0) return;
 
@@ -128,7 +130,7 @@ function addClosedDayGrowth(
     const dayEndTs = getLondonDayStart(nextDateKey);
     const closeUC = dailyCloseUC.get(dateKey) ?? previousCloseUC;
 
-    if ((startTs === null || dayEndTs > startTs) && previousCloseUC > 0) {
+    if ((startTs === null || dayEndTs > startTs) && previousCloseUC > 0 && !skippedLogDates.includes(dateKey)) {
       const dayIndex = getLondonDayIndex(dayStartTs);
       growthByDay[dayIndex].totalPct += ((closeUC - previousCloseUC) / previousCloseUC) * 100;
       growthByDay[dayIndex].count += 1;
@@ -151,12 +153,12 @@ function addUtcDays(value: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-function getLondonDayStart(value: string) {
+export function getLondonDayStart(value: string) {
   const utcMidnight = Date.parse(`${value}T00:00:00Z`);
   return utcMidnight - getLondonOffsetMinutes(new Date(utcMidnight)) * 60 * 1000;
 }
 
-function getLondonDateKey(ts: number) {
+export function getLondonDateKey(ts: number) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/London",
     year: "numeric",

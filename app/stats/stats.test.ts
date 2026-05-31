@@ -66,6 +66,17 @@ test("weekday growth excludes the current London day until its candle closes", (
   assert.equal(stats.weekdayGrowth[2].logCount, 0);
 });
 
+test("weekday growth omits explicitly skipped days", () => {
+  const tx: Tx[] = [
+    { id: "2", ts: tuesday, deltaUC: 100, label: "Read (Good habit · Hold)" },
+    { id: "1", ts: monday, deltaUC: 100, label: "Read (Good habit · Hold)" },
+  ];
+
+  const stats = buildStats(tx, 10200, null, null, Date.parse("2026-05-28T12:00:00Z"), ["2026-05-26"]);
+  assert.equal(stats.weekdayGrowth[1].logCount, 1);
+  assert.equal(stats.weekdayGrowth[2].logCount, 0);
+});
+
 test("custom period filtering includes both selected London calendar days", () => {
   const bounds = getCustomPeriodBounds("2026-05-26", "2026-05-26");
   assert.deepEqual(bounds, {
