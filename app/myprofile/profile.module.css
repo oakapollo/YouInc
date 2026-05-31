@@ -1,0 +1,262 @@
+.page {
+  min-height: 100svh;
+  background: #000000;
+  color: #f5f5f5;
+}
+
+.shell {
+  width: min(100%, 66rem);
+  margin: 0 auto;
+  padding: 28px 20px calc(36px + env(safe-area-inset-bottom));
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 10px 0 18px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.kicker,
+.dangerKicker {
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.header h1 {
+  margin: 7px 0 0;
+  color: #f5f5f5;
+  font-size: clamp(30px, 5vw, 44px);
+  line-height: 1;
+}
+
+.header p,
+.panel p,
+.confirmBox p {
+  margin: 10px 0 0;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.backLink,
+.primaryButton,
+.secondaryButton,
+.dangerButton {
+  display: inline-flex;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9px;
+  padding: 9px 13px;
+  font-size: 13px;
+  font-weight: 750;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 160ms ease, border-color 160ms ease, opacity 160ms ease;
+}
+
+.backLink,
+.secondaryButton {
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #111111;
+  color: rgba(255, 255, 255, 0.84);
+}
+
+.primaryButton {
+  border: 1px solid rgba(255, 255, 255, 0.86);
+  background: #f5f5f5;
+  color: #000000;
+}
+
+.dangerButton {
+  border: 1px solid rgba(244, 63, 94, 0.3);
+  background: rgba(244, 63, 94, 0.16);
+  color: rgba(255, 228, 230, 0.96);
+}
+
+.backLink:hover,
+.secondaryButton:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: #171717;
+}
+
+.dangerButton:hover {
+  background: rgba(244, 63, 94, 0.24);
+}
+
+.primaryButton:hover {
+  background: #ffffff;
+}
+
+.primaryButton:disabled,
+.secondaryButton:disabled,
+.dangerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.notice,
+.error {
+  margin-top: 18px;
+  border-radius: 10px;
+  padding: 11px 13px;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.notice {
+  border: 1px solid rgba(74, 222, 128, 0.24);
+  background: rgba(74, 222, 128, 0.08);
+  color: rgba(187, 247, 208, 0.96);
+}
+
+.error {
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  background: rgba(244, 63, 94, 0.12);
+  color: rgba(255, 201, 210, 0.95);
+}
+
+.panel,
+.loadingCard {
+  margin-top: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 18px;
+  padding: 18px;
+  background: #0b0b0b;
+}
+
+.loadingCard {
+  width: min(calc(100% - 40px), 480px);
+  margin: 64px auto 0;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 14px;
+}
+
+.panelHeading,
+.actionRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.panel h2,
+.confirmBox h2 {
+  margin: 0;
+  color: #f5f5f5;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.panelHeading span {
+  color: rgba(255, 255, 255, 0.42);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.form {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.form label {
+  display: grid;
+  flex: 1;
+  gap: 7px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+}
+
+.form input {
+  width: 100%;
+  height: 42px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 9px;
+  outline: none;
+  padding: 0 12px;
+  background: #101010;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.form input:focus {
+  border-color: rgba(255, 255, 255, 0.38);
+  background: #141414;
+}
+
+.dangerPanel {
+  border-color: rgba(244, 63, 94, 0.2);
+}
+
+.dangerKicker {
+  margin-bottom: 7px;
+  color: rgba(253, 164, 175, 0.76);
+}
+
+.confirmOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(0, 0, 0, 0.76);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.confirmBox {
+  width: min(100%, 460px);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  padding: 20px;
+  background: #0b0b0b;
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.62);
+}
+
+.confirmBox h2 {
+  margin-top: 8px;
+}
+
+.confirmActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+@media (max-width: 640px) {
+  .header,
+  .panelHeading,
+  .actionRow,
+  .form {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .backLink,
+  .panelHeading span {
+    align-self: flex-start;
+  }
+
+  .panelHeading span {
+    text-align: left;
+  }
+
+  .confirmActions {
+    flex-direction: column-reverse;
+  }
+
+  .confirmActions button {
+    width: 100%;
+  }
+}
