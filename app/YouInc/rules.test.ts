@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { applyTaxes, getUkOffsetMinutes, isMarketOpen, priceFromCapUC } from "./rules.ts";
+import { applyTaxes, getAddictionCleanStreakDays, getAddictionHoldBonusUC, getUkOffsetMinutes, isMarketOpen, priceFromCapUC } from "./rules.ts";
 
 test("priceFromCapUC converts credits into the displayed price", () => {
   assert.equal(priceFromCapUC(10000), 1);
@@ -35,4 +35,41 @@ test("London market hours remain closed from 04:00 through 11:59", () => {
 test("London offset helper accounts for daylight saving time", () => {
   assert.equal(getUkOffsetMinutes(new Date("2026-01-15T12:00:00Z")), 0);
   assert.equal(getUkOffsetMinutes(new Date("2026-07-15T12:00:00Z")), 60);
+});
+
+test("addiction hold bonus fires on every third clean day", () => {
+  const tx = [
+    { ts: Date.parse("2026-06-01T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+    { ts: Date.parse("2026-06-02T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+  ];
+
+  assert.equal(getAddictionCleanStreakDays(tx, "Smoking", Date.parse("2026-06-03T12:00:00Z")), 3);
+  assert.equal(getAddictionHoldBonusUC(tx, "Smoking", Date.parse("2026-06-03T12:00:00Z"), 100), 50);
+});
+
+test("addiction hold bonus repeats on the sixth clean day", () => {
+  const tx = [
+    { ts: Date.parse("2026-06-01T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+    { ts: Date.parse("2026-06-02T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+    { ts: Date.parse("2026-06-03T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+    { ts: Date.parse("2026-06-04T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+    { ts: Date.parse("2026-06-05T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+  ];
+
+  assert.equal(getAddictionCleanStreakDays(tx, "Smoking", Date.parse("2026-06-06T12:00:00Z")), 6);
+  assert.equal(getAddictionHoldBonusUC(tx, "Smoking", Date.parse("2026-06-06T12:00:00Z"), 75), 38);
+});
+
+test("addiction relapse resets the clean streak bonus", () => {
+  const tx = [
+    { ts: Date.parse("2026-06-01T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+    { ts: Date.parse("2026-06-02T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+    { ts: Date.parse("2026-06-03T12:00:00Z"), label: "Smoking (Addiction · Sold)" },
+    { ts: Date.parse("2026-06-04T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+    { ts: Date.parse("2026-06-05T12:00:00Z"), label: "Smoking (Addiction · Hold)" },
+  ];
+
+  assert.equal(getAddictionCleanStreakDays(tx, "Smoking", Date.parse("2026-06-06T12:00:00Z")), 3);
+  assert.equal(getAddictionHoldBonusUC(tx, "Smoking", Date.parse("2026-06-06T12:00:00Z"), 100), 50);
+  assert.equal(getAddictionHoldBonusUC(tx, "Smoking", Date.parse("2026-06-05T12:00:00Z"), 100), 0);
 });

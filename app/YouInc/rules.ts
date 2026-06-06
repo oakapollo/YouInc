@@ -1,5 +1,10 @@
 export type DeltaKind = "goal" | "good" | "bad" | "addiction" | "buy" | "decay";
 
+export type AddictionStreakTx = {
+  ts: number;
+  label: string;
+};
+
 export function priceFromCapUC(marketCapUC: number) {
   return marketCapUC / 10000;
 }
@@ -82,4 +87,75 @@ export function getUkOffsetMinutes(now = new Date()) {
 export function isMarketOpen(now = new Date()) {
   const h = getUkHour(now);
   return !(h >= 4 && h < 12);
+}
+
+export function getAddictionHoldBonusUC(tx: AddictionStreakTx[], addictionTitle: string, holdTs: number, effectiveHoldUC: number) {
+  const streakDays = getAddictionCleanStreakDays(tx, addictionTitle, holdTs);
+  if (streakDays === 0 || streakDays % 3 !== 0) return 0;
+  return Math.round(effectiveHoldUC * 0.5);
+}
+
+export function getAddictionCleanStreakDays(tx: AddictionStreakTx[], addictionTitle: string, holdTs: number) {
+  const normalizedTitle = normalizeTitle(addictionTitle);
+  if (!normalizedTitle) return 0;
+
+  const actions = tx
+    .filter((entry) => entry.ts < holdTs)
+    .map((entry) => {
+      const parsed = parseAddictionActionLabel(entry.label);
+      if (!parsed || normalizeTitle(parsed.title) !== normalizedTitle) return null;
+      return { ts: entry.ts, action: parsed.action };
+    })
+    .filter((entry): entry is { ts: number; action: "Hold" | "Sold" } => Boolean(entry));
+
+  actions.push({ ts: holdTs, action: "Hold" });
+  actions.sort((a, b) => a.ts - b.ts);
+
+  let streakDays = 0;
+  let lastHoldDate: string | null = null;
+
+  for (const action of actions) {
+    if (action.action === "Sold") {
+      streakDays = 0;
+      lastHoldDate = null;
+      continue;
+    }
+
+    const dateKey = getUkDateKey(action.ts);
+    if (dateKey === lastHoldDate) continue;
+
+    if (lastHoldDate && getDateDiffDays(lastHoldDate, dateKey) === 1) {
+      streakDays += 1;
+    } else {
+      streakDays = 1;
+    }
+
+    lastHoldDate = dateKey;
+  }
+
+  return streakDays;
+}
+
+function parseAddictionActionLabel(label: string) {
+  const normalized = label.replace(/\s+\(taxed\)$/i, "");
+  const match = normalized.match(/^(.*?) \(Addiction · (Hold|Sold)\)$/i);
+  if (!match) return null;
+  return { title: match[1].trim(), action: match[2] as "Hold" | "Sold" };
+}
+
+function normalizeTitle(title: string) {
+  return title.trim().toLowerCase();
+}
+
+function getUkDateKey(ts: number) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date(ts));
+}
+
+function getDateDiffDays(fromDateKey: string, toDateKey: string) {
+  return Math.round((Date.parse(`${toDateKey}T00:00:00Z`) - Date.parse(`${fromDateKey}T00:00:00Z`)) / 86400000);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { applyTaxes, getUkOffsetMinutes, isMarketOpen, type DeltaKind } from "./rules";
+import { applyTaxes, getAddictionHoldBonusUC, getUkOffsetMinutes, isMarketOpen, type DeltaKind } from "./rules";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "./youinc.module.css";
 import { useAuth } from "../providers";
@@ -588,14 +588,16 @@ export default function YouIncPage() {
   // ------- taxed market cap updates + transactions -------
 function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
   const preview = applyTaxes(kind, deltaUC, store.marketCapUC).effectiveDeltaUC;
+  const isAddictionHold = kind === "addiction" && deltaUC > 0;
   const sign = preview > 0 ? "+" : "";
   const readableLabel = label.replace(/\s\([^)]*\)$/g, "").replace(/^BUY:\s*/i, "");
   const txId = uid();
   const txTs = backfillDate ? getBackfillTimestamp(backfillDate) : Date.now();
+  const previewBonusUC = isAddictionHold ? getAddictionHoldBonusUC(store.tx, readableLabel, txTs, preview) : 0;
 
   setLogFlash({
     id: uid(),
-    text: `${readableLabel} logged · ${sign}${preview} UC`,
+    text: `${readableLabel} logged · ${sign}${preview} UC${previewBonusUC > 0 ? ` +${previewBonusUC} bonus` : ""}`,
   });
 
   if (logFlashTimerRef.current) clearTimeout(logFlashTimerRef.current);
@@ -603,8 +605,9 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
 
   updateStoreAndSave((s) => {
     const { effectiveDeltaUC, taxed } = applyTaxes(kind, deltaUC, s.marketCapUC);
+    const bonusUC = isAddictionHold ? getAddictionHoldBonusUC(s.tx, readableLabel, txTs, effectiveDeltaUC) : 0;
 
-    const nextCap = Math.max(0, s.marketCapUC + effectiveDeltaUC);
+    const nextCap = Math.max(0, s.marketCapUC + effectiveDeltaUC + bonusUC);
 
     const tx: Tx = {
       id: txId,
@@ -612,11 +615,20 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
       deltaUC: effectiveDeltaUC,
       label: taxed ? `${label} (taxed)` : label,
     };
+    const bonusTx: Tx | null =
+      bonusUC > 0
+        ? {
+            id: uid(),
+            ts: txTs + 1,
+            deltaUC: bonusUC,
+            label: `${readableLabel} (Addiction · Clean streak bonus)`,
+          }
+        : null;
 
     return {
       ...s,
       marketCapUC: nextCap,
-      tx: [tx, ...s.tx].slice(0, 2000),
+      tx: [bonusTx, tx, ...s.tx].filter((entry): entry is Tx => Boolean(entry)).slice(0, 2000),
       skippedLogDates: backfillDate ? (s.skippedLogDates ?? []).filter((date) => date !== backfillDate) : s.skippedLogDates,
     };
   });
