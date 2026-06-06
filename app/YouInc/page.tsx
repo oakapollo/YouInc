@@ -28,18 +28,32 @@ const SECTION_SUBTITLES: Record<TabKey, string> = {
   goals: "Track bigger targets with a clear deadline.",
   good: "Reward consistency and build momentum.",
   bad: "Treat slip-ups as data, not drama.",
-  addictions: "Monitor relapses and escalating penalties.",
+  addictions: "Track clean days and relapses with a chosen intensity.",
 };
 
 const INTENSITY_OPTIONS = [
   { hold: 10, sold: 10 },
   { hold: 20, sold: 10 },
   { hold: 40, sold: 20 },
+  { hold: 60, sold: 30 },
   { hold: 80, sold: 40 },
   { hold: 100, sold: 50 },
 ] as const;
 
 const DEFAULT_INTENSITY_INDEX = INTENSITY_OPTIONS.length - 1;
+
+const ADDICTION_INTENSITY_OPTIONS = [
+  { hold: 20, sold: 10 },
+  { hold: 40, sold: 20 },
+  { hold: 60, sold: 30 },
+  { hold: 80, sold: 40 },
+  { hold: 100, sold: 50 },
+  { hold: 150, sold: 75 },
+  { hold: 200, sold: 100 },
+  { hold: 200, sold: 200 },
+] as const;
+
+const DEFAULT_ADDICTION_INTENSITY_INDEX = 4;
 
 type IntensityOption = (typeof INTENSITY_OPTIONS)[number];
 
@@ -50,6 +64,18 @@ function getIntensityByIndex(index: number): IntensityOption {
 function getIntensityIndexFromValues(holdUC?: number, soldUC?: number) {
   const index = INTENSITY_OPTIONS.findIndex((option) => option.hold === (holdUC ?? 100) && option.sold === (soldUC ?? 50));
   return index >= 0 ? index : DEFAULT_INTENSITY_INDEX;
+}
+
+function getAddictionIntensityByIndex(index: number) {
+  return (
+    ADDICTION_INTENSITY_OPTIONS[Math.max(0, Math.min(ADDICTION_INTENSITY_OPTIONS.length - 1, index))] ??
+    ADDICTION_INTENSITY_OPTIONS[DEFAULT_ADDICTION_INTENSITY_INDEX]
+  );
+}
+
+function getAddictionIntensityIndexFromValues(holdUC?: number, soldUC?: number) {
+  const index = ADDICTION_INTENSITY_OPTIONS.findIndex((option) => option.hold === (holdUC ?? 100) && option.sold === (soldUC ?? 50));
+  return index >= 0 ? index : DEFAULT_ADDICTION_INTENSITY_INDEX;
 }
 
 function TrashIcon() {
@@ -87,7 +113,7 @@ type BadHabit = {
   createdAt: number;
 };
 
-type Addiction = { id: string; title: string; createdAt: number };
+type Addiction = { id: string; title: string; holdUC?: number; soldUC?: number; createdAt: number };
 
 type Tx = { id: string; ts: number; deltaUC: number; label: string };
 
@@ -106,93 +132,6 @@ type Store = {
 };
 
 type Candle = { t: number; o: number; h: number; l: number; c: number };
-
-const ADDICTION_BASE_CHARGE = 100;
-const ADDICTION_MAX_CHARGE = 3200;
-const ADDICTION_COOLDOWN_MS = 3 * 24 * 60 * 60 * 1000;
-
-type AddictionChargeState = {
-  currentCharge: number;
-  nextReductionAt: number | null;
-  nextReductionCharge: number | null;
-  lastSoldTs: number | null;
-  reachedMax: boolean;
-};
-
-function getAddictionSoldLabel(title: string) {
-  return `${title} (Addiction · Sold)`;
-}
-
-function getAddictionResetLabel(title: string) {
-  return `${title} (Addiction · Reset charges)`;
-}
-
-function decayAddictionCharge(charge: number, elapsedMs: number) {
-  if (charge <= ADDICTION_BASE_CHARGE) return charge;
-  const steps = Math.max(0, Math.floor(elapsedMs / ADDICTION_COOLDOWN_MS));
-  let next = charge;
-  for (let i = 0; i < steps; i += 1) {
-    next = Math.max(ADDICTION_BASE_CHARGE, Math.floor(next / 2));
-    if (next <= ADDICTION_BASE_CHARGE) break;
-  }
-  return next;
-}
-
-function getAddictionChargeState(title: string, tx: Tx[], now = Date.now()): AddictionChargeState {
-  const soldLabel = getAddictionSoldLabel(title);
-  const resetLabel = getAddictionResetLabel(title);
-
-  const relevant = [...tx]
-    .filter((entry) => entry.label === soldLabel || entry.label === resetLabel)
-    .sort((a, b) => a.ts - b.ts);
-
-  let nextCharge = ADDICTION_BASE_CHARGE;
-  let lastSoldTs: number | null = null;
-
-  for (const entry of relevant) {
-    if (entry.label === resetLabel) {
-      nextCharge = ADDICTION_BASE_CHARGE;
-      lastSoldTs = null;
-      continue;
-    }
-
-    if (lastSoldTs !== null) {
-      nextCharge = decayAddictionCharge(nextCharge, entry.ts - lastSoldTs);
-    }
-
-    const appliedCharge = nextCharge;
-    nextCharge = Math.min(ADDICTION_MAX_CHARGE, appliedCharge * 2);
-    lastSoldTs = entry.ts;
-  }
-
-  if (lastSoldTs !== null) {
-    nextCharge = decayAddictionCharge(nextCharge, now - lastSoldTs);
-  }
-
-  const nextReductionAt =
-    lastSoldTs !== null && nextCharge > ADDICTION_BASE_CHARGE
-      ? lastSoldTs + (Math.floor((now - lastSoldTs) / ADDICTION_COOLDOWN_MS) + 1) * ADDICTION_COOLDOWN_MS
-      : null;
-
-  return {
-    currentCharge: nextCharge,
-    nextReductionAt,
-    nextReductionCharge: nextCharge > ADDICTION_BASE_CHARGE ? Math.max(ADDICTION_BASE_CHARGE, Math.floor(nextCharge / 2)) : null,
-    lastSoldTs,
-    reachedMax: nextCharge >= ADDICTION_MAX_CHARGE,
-  };
-}
-
-function formatDurationShort(ms: number) {
-  const totalMinutes = Math.max(0, Math.ceil(ms / (60 * 1000)));
-  const days = Math.floor(totalMinutes / (60 * 24));
-  const hours = Math.floor((totalMinutes % (60 * 24)) / 60);
-  const minutes = totalMinutes % 60;
-
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
-}
 
 
 function stripUndefined<T>(value: T): T {
@@ -479,7 +418,7 @@ export default function YouIncPage() {
   const [badTitle, setBadTitle] = useState("");
   const [badNotes, setBadNotes] = useState("");
   const [badIntensityIndex, setBadIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
-  const [intensityEditor, setIntensityEditor] = useState<{ kind: "good" | "bad"; id: string; index: number } | null>(null);
+  const [intensityEditor, setIntensityEditor] = useState<{ kind: "good" | "bad" | "addiction"; id: string; index: number } | null>(null);
   const [confirmAction, setConfirmAction] = useState<
     | { type: "logout" }
     | { type: "deleteItem"; kind: TabKey; id: string; title: string }
@@ -487,6 +426,7 @@ export default function YouIncPage() {
   >(null);
 
   const [addictionTitle, setAddictionTitle] = useState("");
+  const [addictionIntensityIndex, setAddictionIntensityIndex] = useState(DEFAULT_ADDICTION_INTENSITY_INDEX);
 
   // ⏱️ Real-time tick (needed for 1m chart to "move" even without actions)
   const [nowTick, setNowTick] = useState(0);
@@ -797,6 +737,7 @@ function applyDelta(kind: DeltaKind, label: string, deltaUC: number) {
 
   const goodIntensity = getIntensityByIndex(goodIntensityIndex);
   const badIntensity = getIntensityByIndex(badIntensityIndex);
+  const addictionIntensity = getAddictionIntensityByIndex(addictionIntensityIndex);
 
 function submitBuyActivity() {
   const a = buyActivity.trim();
@@ -811,15 +752,6 @@ function submitBuyActivity() {
   const price = useMemo(() => store.marketCapUC / 10000, [store.marketCapUC]);
 
   const txAsc = useMemo(() => [...store.tx].sort((a, b) => a.ts - b.ts), [store.tx]);
-
-  const addictionChargeMap = useMemo(() => {
-    const map = new Map<string, AddictionChargeState>();
-    for (const addiction of store.addictions) {
-      map.set(addiction.id, getAddictionChargeState(addiction.title, store.tx, Date.now()));
-    }
-    return map;
-  }, [store.addictions, store.tx, nowTick]);
-
 
   const candles = useMemo(() => {
     if (tf === "3d") return buildCandles(store.marketCapUC, txAsc, "3d", 40, store.skippedLogDates);
@@ -888,6 +820,7 @@ function submitBuyActivity() {
       setBadIntensityIndex(DEFAULT_INTENSITY_INDEX);
     } else {
       setAddictionTitle("");
+      setAddictionIntensityIndex(DEFAULT_ADDICTION_INTENSITY_INDEX);
     }
   }
 
@@ -1021,7 +954,13 @@ function submitBuyActivity() {
       return;
     }
 
-    const item: Addiction = { id: uid(), title: addictionTitle.trim(), createdAt: Date.now() };
+    const item: Addiction = {
+      id: uid(),
+      title: addictionTitle.trim(),
+      holdUC: addictionIntensity.hold,
+      soldUC: addictionIntensity.sold,
+      createdAt: Date.now(),
+    };
     updateStoreAndSave((s) => ({ ...s, addictions: [item, ...s.addictions] }));
     closeModal();
     resetFormForTab("addictions");
@@ -1054,19 +993,26 @@ function submitBuyActivity() {
     setConfirmAction(null);
   }
 
-  function openIntensityEditor(kind: "good" | "bad", id: string, holdUC?: number, soldUC?: number) {
+  function openIntensityEditor(kind: "good" | "bad" | "addiction", id: string, holdUC?: number, soldUC?: number) {
     setIntensityEditor((current) =>
       current?.kind === kind && current.id === id
         ? null
-        : { kind, id, index: getIntensityIndexFromValues(holdUC, soldUC) }
+        : {
+            kind,
+            id,
+            index:
+              kind === "addiction"
+                ? getAddictionIntensityIndexFromValues(holdUC, soldUC)
+                : getIntensityIndexFromValues(holdUC, soldUC),
+          }
     );
   }
 
   function saveIntensityEditor() {
     if (!intensityEditor) return;
-    const next = getIntensityByIndex(intensityEditor.index);
 
     if (intensityEditor.kind === "good") {
+      const next = getIntensityByIndex(intensityEditor.index);
       updateStoreAndSave((s) => ({
         ...s,
         goodHabits: s.goodHabits.map((habit) =>
@@ -1076,6 +1022,7 @@ function submitBuyActivity() {
     }
 
     if (intensityEditor.kind === "bad") {
+      const next = getIntensityByIndex(intensityEditor.index);
       updateStoreAndSave((s) => ({
         ...s,
         badHabits: s.badHabits.map((habit) =>
@@ -1084,16 +1031,17 @@ function submitBuyActivity() {
       }));
     }
 
+    if (intensityEditor.kind === "addiction") {
+      const next = getAddictionIntensityByIndex(intensityEditor.index);
+      updateStoreAndSave((s) => ({
+        ...s,
+        addictions: s.addictions.map((addiction) =>
+          addiction.id === intensityEditor.id ? { ...addiction, holdUC: next.hold, soldUC: next.sold } : addiction
+        ),
+      }));
+    }
+
     setIntensityEditor(null);
-  }
-
-  function applyAddictionSold(addiction: Addiction) {
-    const state = addictionChargeMap.get(addiction.id) ?? getAddictionChargeState(addiction.title, store.tx, Date.now());
-    applyDelta("addiction", getAddictionSoldLabel(addiction.title), -state.currentCharge);
-  }
-
-  function resetAddictionCharges(addiction: Addiction) {
-    applyDelta("addiction", getAddictionResetLabel(addiction.title), 0);
   }
 
   return (
@@ -1462,57 +1410,78 @@ function submitBuyActivity() {
                 {store.addictions.length === 0 ? (
                   <EmptyState text="No addictions tracked yet. Add one and start stacking clean days." />
                 ) : (
-                  store.addictions.map((a) => {
-                    const chargeState = addictionChargeMap.get(a.id) ?? getAddictionChargeState(a.title, store.tx, Date.now());
-                    const soldPenalty = Math.abs(getPreviewDelta("addiction", -chargeState.currentCharge));
-                    const resetEnabled = chargeState.currentCharge > ADDICTION_BASE_CHARGE || chargeState.lastSoldTs !== null;
-                    const reductionText =
-                      chargeState.nextReductionAt && chargeState.nextReductionCharge !== null
-                        ? `Next reduction in ${formatDurationShort(chargeState.nextReductionAt - Date.now())} → -${chargeState.nextReductionCharge} UC`
-                        : "Base penalty active";
-
-                    return (
-                      <div key={a.id} className={styles.card}>
-                        <div className={styles.cardMain}>
-                          <div className={styles.cardTitle}>{a.title}</div>
-                          <div className={styles.metaRow}>
-                            <span className={styles.metaPill}>No expiry</span>
-                            <span className={styles.metaPill}>Current sold: -{soldPenalty} UC</span>
-                            <span className={styles.metaPill}>{reductionText}</span>
-                            {chargeState.reachedMax ? <span className={styles.metaPill}>Max escalation</span> : null}
-                          </div>
+                  store.addictions.map((a) => (
+                    <div key={a.id} className={styles.card}>
+                      <div className={styles.cardMain}>
+                        <div className={styles.cardTitle}>{a.title}</div>
+                        <div className={styles.metaRow}>
+                          <span className={styles.metaPill}>No expiry</span>
+                          <span className={styles.metaPill}>
+                            Intensity +{a.holdUC ?? 100} / -{a.soldUC ?? 50}
+                            {(a.holdUC ?? 100) === 200 && (a.soldUC ?? 50) === 200 ? " MAX" : ""}
+                          </span>
                         </div>
+                      </div>
+                      <div className={styles.cardControlStack}>
                         <div className={styles.cardActions}>
                           <button
                             className={styles.actionPrimary}
-                            onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +200)}
+                            onClick={() => applyDelta("addiction", `${a.title} (Addiction · Hold)`, +(a.holdUC ?? 100))}
                             type="button"
                           >
-                            Hold <span className={styles.delta}>+{getPreviewDelta("addiction", 200)} UC</span>
+                            Hold <span className={styles.delta}>+{getPreviewDelta("addiction", a.holdUC ?? 100)} UC</span>
                           </button>
                           <button
                             className={styles.actionDanger}
-                            onClick={() => applyAddictionSold(a)}
+                            onClick={() => applyDelta("addiction", `${a.title} (Addiction · Sold)`, -(a.soldUC ?? 50))}
                             type="button"
                           >
-                            Sold <span className={styles.delta}>-{soldPenalty} UC</span>
-                          </button>
-                          <button
-                            className={styles.ghostBtn}
-                            onClick={() => resetAddictionCharges(a)}
-                            type="button"
-                            disabled={!resetEnabled}
-                            title="Reset escalation back to base penalty"
-                          >
-                            Reset charges
+                            Sold <span className={styles.delta}>-{a.soldUC ?? 50} UC</span>
                           </button>
                           <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("addictions", a.id, a.title)} title="Remove" type="button" aria-label="Remove addiction">
                             <TrashIcon />
                           </button>
                         </div>
+
+                        <button
+                          className={styles.adjustIntensityBtn}
+                          onClick={() => openIntensityEditor("addiction", a.id, a.holdUC, a.soldUC)}
+                          type="button"
+                        >
+                          Adjust intensity
+                        </button>
+
+                        {intensityEditor?.kind === "addiction" && intensityEditor.id === a.id ? (
+                          <div className={styles.intensityDropdown}>
+                            <div className={styles.previewActions}>
+                              <span className={styles.previewHold}>Hold +{getAddictionIntensityByIndex(intensityEditor.index).hold}</span>
+                              <span className={styles.previewSold}>
+                                Sold -{getAddictionIntensityByIndex(intensityEditor.index).sold}
+                                {intensityEditor.index === ADDICTION_INTENSITY_OPTIONS.length - 1 ? " MAX" : ""}
+                              </span>
+                            </div>
+                            <input
+                              className={styles.intensitySlider}
+                              type="range"
+                              min="0"
+                              max={ADDICTION_INTENSITY_OPTIONS.length - 1}
+                              step="1"
+                              value={intensityEditor.index}
+                              onChange={(e) => setIntensityEditor({ ...intensityEditor, index: Number(e.target.value) })}
+                            />
+                            <div className={styles.intensitySaveRow}>
+                              <button className={styles.ghostBtn} onClick={() => setIntensityEditor(null)} type="button">
+                                Cancel
+                              </button>
+                              <button className={styles.primaryBtn} onClick={saveIntensityEditor} type="button">
+                                Save
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
-                    );
-                  })
+                    </div>
+                  ))
                 )}
               </div>
             </div>
@@ -1728,6 +1697,28 @@ function submitBuyActivity() {
                     <div className={styles.helperBox}>
                       <div className={styles.helperTitle}>No expiry</div>
                       <div className={styles.helperText}>Tracked continuously. “Hold” = clean day. “Sold” = relapse.</div>
+                    </div>
+
+                    <div className={styles.intensityBox}>
+                      <div className={styles.previewActions}>
+                        <span className={styles.previewHold}>Hold +{addictionIntensity.hold}</span>
+                        <span className={styles.previewSold}>
+                          Sold -{addictionIntensity.sold}
+                          {addictionIntensityIndex === ADDICTION_INTENSITY_OPTIONS.length - 1 ? " MAX" : ""}
+                        </span>
+                      </div>
+                      <label className={styles.intensityLabel}>
+                        <span>Adjust intensity</span>
+                        <input
+                          className={styles.intensitySlider}
+                          type="range"
+                          min="0"
+                          max={ADDICTION_INTENSITY_OPTIONS.length - 1}
+                          step="1"
+                          value={addictionIntensityIndex}
+                          onChange={(e) => setAddictionIntensityIndex(Number(e.target.value))}
+                        />
+                      </label>
                     </div>
                   </div>
                 )}
