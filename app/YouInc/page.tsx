@@ -16,6 +16,7 @@ import { db } from "../../lib/firebase";
 type TabKey = "goals" | "good" | "bad" | "addictions";
 
 const SECTION_ORDER: TabKey[] = ["goals", "good", "bad", "addictions"];
+const GOOD_HABIT_VISIBLE_LIMIT = 3;
 
 const SECTION_TITLES: Record<TabKey, string> = {
   goals: "Goals",
@@ -414,6 +415,7 @@ export default function YouIncPage() {
   const [goodDays, setGoodDays] = useState<number[]>([1, 2, 3, 4, 5]);
   const [goodNotes, setGoodNotes] = useState("");
   const [goodIntensityIndex, setGoodIntensityIndex] = useState(DEFAULT_INTENSITY_INDEX);
+  const [showAllGoodHabits, setShowAllGoodHabits] = useState(false);
 
   const [badTitle, setBadTitle] = useState("");
   const [badNotes, setBadNotes] = useState("");
@@ -752,6 +754,8 @@ function submitBuyActivity() {
   const price = useMemo(() => store.marketCapUC / 10000, [store.marketCapUC]);
 
   const txAsc = useMemo(() => [...store.tx].sort((a, b) => a.ts - b.ts), [store.tx]);
+  const visibleGoodHabits = showAllGoodHabits ? store.goodHabits : store.goodHabits.slice(0, GOOD_HABIT_VISIBLE_LIMIT);
+  const hiddenGoodHabitsCount = Math.max(0, store.goodHabits.length - GOOD_HABIT_VISIBLE_LIMIT);
 
   const candles = useMemo(() => {
     if (tf === "3d") return buildCandles(store.marketCapUC, txAsc, "3d", 40, store.skippedLogDates);
@@ -1259,74 +1263,81 @@ function submitBuyActivity() {
                 {store.goodHabits.length === 0 ? (
                   <EmptyState text="No good habits yet. Add a habit and choose frequency." />
                 ) : (
-                  store.goodHabits.map((h) => (
-                    <div key={h.id} className={styles.card}>
-                      <div className={styles.cardMain}>
-                        <div className={styles.cardTitle}>{h.title}</div>
-                        <div className={styles.metaRow}>
-                          <span className={styles.metaPill}>
-                            {h.frequencyMode === "daily" ? "Every day" : `Days: ${h.daysOfWeek.map(formatDow).join(", ")}`}
-                          </span>
-                          {h.notes ? <span className={styles.metaNote}>{h.notes}</span> : null}
-                        </div>
-                      </div>
-                      <div className={styles.cardControlStack}>
-                        <div className={styles.cardActions}>
-                          <button
-                            className={styles.actionPrimary}
-                            onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +(h.holdUC ?? 100))}
-                            type="button"
-                          >
-                            Hold <span className={styles.delta}>+{getPreviewDelta("good", h.holdUC ?? 100)} UC</span>
-                          </button>
-                          <button
-                            className={styles.actionDanger}
-                            onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -(h.soldUC ?? 50))}
-                            type="button"
-                          >
-                            Sold <span className={styles.delta}>-{h.soldUC ?? 50} UC</span>
-                          </button>
-                          <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("good", h.id, h.title)} title="Remove" type="button" aria-label="Remove good habit">
-                            <TrashIcon />
-                          </button>
-                        </div>
-
-                        <button
-                          className={styles.adjustIntensityBtn}
-                          onClick={() => openIntensityEditor("good", h.id, h.holdUC, h.soldUC)}
-                          type="button"
-                        >
-                          Adjust intensity
-                        </button>
-
-                        {intensityEditor?.kind === "good" && intensityEditor.id === h.id ? (
-                          <div className={styles.intensityDropdown}>
-                            <div className={styles.previewActions}>
-                              <span className={styles.previewHold}>Hold +{getIntensityByIndex(intensityEditor.index).hold}</span>
-                              <span className={styles.previewSold}>Sold -{getIntensityByIndex(intensityEditor.index).sold}</span>
-                            </div>
-                            <input
-                              className={styles.intensitySlider}
-                              type="range"
-                              min="0"
-                              max={INTENSITY_OPTIONS.length - 1}
-                              step="1"
-                              value={intensityEditor.index}
-                              onChange={(e) => setIntensityEditor({ ...intensityEditor, index: Number(e.target.value) })}
-                            />
-                            <div className={styles.intensitySaveRow}>
-                              <button className={styles.ghostBtn} onClick={() => setIntensityEditor(null)} type="button">
-                                Cancel
-                              </button>
-                              <button className={styles.primaryBtn} onClick={saveIntensityEditor} type="button">
-                                Save
-                              </button>
-                            </div>
+                  <>
+                    {visibleGoodHabits.map((h) => (
+                      <div key={h.id} className={styles.card}>
+                        <div className={styles.cardMain}>
+                          <div className={styles.cardTitle}>{h.title}</div>
+                          <div className={styles.metaRow}>
+                            <span className={styles.metaPill}>
+                              {h.frequencyMode === "daily" ? "Every day" : `Days: ${h.daysOfWeek.map(formatDow).join(", ")}`}
+                            </span>
+                            {h.notes ? <span className={styles.metaNote}>{h.notes}</span> : null}
                           </div>
-                        ) : null}
+                        </div>
+                        <div className={styles.cardControlStack}>
+                          <div className={styles.cardActions}>
+                            <button
+                              className={styles.actionPrimary}
+                              onClick={() => applyDelta("good", `${h.title} (Good habit · Hold)`, +(h.holdUC ?? 100))}
+                              type="button"
+                            >
+                              Hold <span className={styles.delta}>+{getPreviewDelta("good", h.holdUC ?? 100)} UC</span>
+                            </button>
+                            <button
+                              className={styles.actionDanger}
+                              onClick={() => applyDelta("good", `${h.title} (Good habit · Sold)`, -(h.soldUC ?? 50))}
+                              type="button"
+                            >
+                              Sold <span className={styles.delta}>-{h.soldUC ?? 50} UC</span>
+                            </button>
+                            <button className={styles.iconBtnSmall} onClick={() => requestRemoveItem("good", h.id, h.title)} title="Remove" type="button" aria-label="Remove good habit">
+                              <TrashIcon />
+                            </button>
+                          </div>
+
+                          <button
+                            className={styles.adjustIntensityBtn}
+                            onClick={() => openIntensityEditor("good", h.id, h.holdUC, h.soldUC)}
+                            type="button"
+                          >
+                            Adjust intensity
+                          </button>
+
+                          {intensityEditor?.kind === "good" && intensityEditor.id === h.id ? (
+                            <div className={styles.intensityDropdown}>
+                              <div className={styles.previewActions}>
+                                <span className={styles.previewHold}>Hold +{getIntensityByIndex(intensityEditor.index).hold}</span>
+                                <span className={styles.previewSold}>Sold -{getIntensityByIndex(intensityEditor.index).sold}</span>
+                              </div>
+                              <input
+                                className={styles.intensitySlider}
+                                type="range"
+                                min="0"
+                                max={INTENSITY_OPTIONS.length - 1}
+                                step="1"
+                                value={intensityEditor.index}
+                                onChange={(e) => setIntensityEditor({ ...intensityEditor, index: Number(e.target.value) })}
+                              />
+                              <div className={styles.intensitySaveRow}>
+                                <button className={styles.ghostBtn} onClick={() => setIntensityEditor(null)} type="button">
+                                  Cancel
+                                </button>
+                                <button className={styles.primaryBtn} onClick={saveIntensityEditor} type="button">
+                                  Save
+                                </button>
+                              </div>
+                            </div>
+                          ) : null}
+                        </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                    {hiddenGoodHabitsCount > 0 ? (
+                      <button className={styles.showMoreBtn} onClick={() => setShowAllGoodHabits((current) => !current)} type="button">
+                        {showAllGoodHabits ? "Show less" : `Show more (${hiddenGoodHabitsCount})`}
+                      </button>
+                    ) : null}
+                  </>
                 )}
               </div>
             </div>
