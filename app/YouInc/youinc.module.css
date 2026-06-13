@@ -2861,3 +2861,100 @@ select.input {
     justify-content: center;
   }
 }
+
+/* Guest tutorial coach placement guardrails. Keep this at the end so it wins over older guest demo styles. */
+.guestCoachCard {
+  width: min(560px, calc(100vw - 28px));
+  max-height: min(42svh, 260px);
+  overflow-y: auto;
+  pointer-events: auto;
+  animation: guestCoachFadeIn 0.24s ease both;
+}
+
+.guestCoachCardBottom {
+  top: auto;
+  bottom: calc(74px + env(safe-area-inset-bottom));
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+}
+
+.guestCoachCardTop {
+  top: calc(14px + env(safe-area-inset-top));
+  bottom: auto;
+  left: 50%;
+  right: auto;
+  transform: translateX(-50%);
+}
+
+.guestCoachCardUpperRight {
+  top: calc(96px + env(safe-area-inset-top));
+  bottom: auto;
+  left: auto;
+  right: 16px;
+  transform: none;
+  width: min(360px, calc(100vw - 32px));
+}
+
+.guestCoachCardBottom.guestCoachCard,
+.guestCoachCardTop.guestCoachCard,
+.guestCoachCardUpperRight.guestCoachCard {
+  margin: 0;
+}
+
+.guestScrollArrows {
+  position: fixed;
+  left: 50%;
+  bottom: calc(118px + env(safe-area-inset-bottom));
+  z-index: 85;
+  transform: translateX(-50%);
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 28px;
+  font-weight: 900;
+  animation: guestScrollHintBounce 0.85s ease-in-out infinite alternate;
+}
+
+.guestScrollArrowsUp {
+  position: fixed;
+  left: 50%;
+  top: calc(92px + env(safe-area-inset-top));
+  z-index: 85;
+  transform: translateX(-50%);
+  pointer-events: none;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 28px;
+  font-weight: 900;
+  animation: guestScrollHintUpBounce 0.85s ease-in-out infinite alternate;
+}
+
+@keyframes guestCoachFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (max-width: 640px) {
+  .guestCoachCard {
+    width: min(380px, calc(100vw - 24px));
+    max-height: 34svh;
+    padding: 12px 13px;
+    border-radius: 18px;
+  }
+
+  .guestCoachCardTop {
+    top: calc(10px + env(safe-area-inset-top));
+  }
+
+  .guestCoachCardUpperRight {
+    top: calc(86px + env(safe-area-inset-top));
+    right: 12px;
+  }
+
+  .guestCoachText {
+    font-size: 11px;
+  }
+}

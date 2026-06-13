@@ -2322,32 +2322,33 @@ function GuestCoach({
   onNext: (next: any) => void;
   onCreateAccount: () => void;
 }) {
-  const copy: Record<string, { kicker: string; title: string; text: string; button?: string; next?: string; arrows?: "down" | "up" }> = {
-    goodTab: { kicker: "Tutorial", title: "Start with Good Habits", text: "Tap Good Habits first. This is where you track behaviours you want to build." },
-    addGood: { kicker: "Step 1", title: "Add your first habit", text: "Now tap Add entry. I preloaded a simple habit so you can see the flow fast." },
-    goodText: { kicker: "Step 2", title: "Habit loaded", text: "Habit: Logging my habits. Leave it as it is for the tutorial.", button: "Next", next: "goodIntensity" },
-    goodIntensity: { kicker: "Step 3", title: "Set fair rewards", text: "Some habits are smaller. Move the intensity to +20 / -10 so the reward matches the effort." },
-    submitGood: { kicker: "Step 4", title: "Add it", text: "Tap Add to put this habit into your dashboard." },
-    holdGood: { kicker: "Step 5", title: "Log the habit", text: "Tap Hold to log that you did it. This pushes your YouInc price up." },
-    scrollChart: { kicker: "Chart", title: "Scroll down", text: "Your action created chart data. Scroll down to the chart.", button: "I’m at the chart", next: "lineMode", arrows: "down" },
-    lineMode: { kicker: "Chart view", title: "Try Line mode", text: "You can switch between candlesticks and line mode depending on what feels clearer." },
-    timeframes: { kicker: "Timeframes", title: "1D / 3D / 1W / 1M", text: "These change how your progress is grouped: daily, every 3 days, calendar weeks, or calendar months.", button: "OK", next: "buyOpen" },
-    buyOpen: { kicker: "Quick actions", title: "Use BUY for small wins", text: "BUY is for quick tasks like reading a page, doing push ups, tidying your room, or anything productive." },
-    buyComplete: { kicker: "Quick action", title: "5 push ups loaded", text: "Tap Completed +25 UC to log it." },
-    tapChart: { kicker: "Inspect", title: "Tap the candle or dot", text: "Tap the only candle/dot to inspect exactly what changed in this period." },
-    scrollLogs: { kicker: "Logs", title: "Scroll down", text: "Now scroll down to the selected-period logs.", button: "Show me", next: "logsExplain", arrows: "down" },
-    logsExplain: { kicker: "Logs", title: "This is your evidence", text: "Here you can see logs and performance difference depending on the selected period.", button: "Next", next: "badTab" },
-    badTab: { kicker: "Bad habits", title: "Now track honesty", text: "Scroll up and tap Bad Habits. This is where you log patterns you want to reduce.", arrows: "up" },
-    addBad: { kicker: "Bad habit", title: "Add one", text: "Tap Add entry. The bad habit is preloaded for this tutorial." },
-    submitBad: { kicker: "Bad habit", title: "Add your bad habit", text: "Tap Add. No intensity step here — keep moving." },
-    soldBad: { kicker: "Bad habit", title: "Log the slip", text: "Tap Sold -50. Not as punishment — as data." },
-    honesty: { kicker: "Good", title: "Honesty matters most", text: "Being honest with yourself is the whole point. The chart only works if your logs are real.", button: "OK", next: "goalsTab" },
-    goalsTab: { kicker: "Goals", title: "Now add a goal", text: "Scroll up if needed, then tap Goals." , arrows: "up"},
-    addGoal: { kicker: "Goal", title: "Add a goal", text: "Tap Add entry. I loaded a simple goal for the demo." },
-    submitGoal: { kicker: "Goal", title: "Add the goal", text: "Tap Add to place it into Goals." },
-    completeGoal: { kicker: "Goal", title: "Complete it", text: "Tap Complete +400 to see the bigger win animation." },
+  type CoachPlacement = "top" | "bottom" | "upperRight";
+  const copy: Record<string, { kicker: string; title: string; text: string; button?: string; next?: string; arrows?: "down" | "up"; placement?: CoachPlacement }> = {
+    goodTab: { kicker: "Tutorial", title: "Start with Good Habits", text: "Tap Good Habits first. This is where you track behaviours you want to build.", placement: "bottom" },
+    addGood: { kicker: "Step 1", title: "Add your first habit", text: "Now tap Add entry. I preloaded a simple habit so you can see the flow fast.", placement: "upperRight" },
+    goodText: { kicker: "Step 2", title: "Habit loaded", text: "Habit: Logging my habits. Leave it as it is for the tutorial.", button: "Next", next: "goodIntensity", placement: "bottom" },
+    goodIntensity: { kicker: "Step 3", title: "Set fair rewards", text: "Some habits are smaller. Move the intensity to +20 / -10 so the reward matches the effort.", placement: "top" },
+    submitGood: { kicker: "Step 4", title: "Add it", text: "Tap Add to put this habit into your dashboard.", placement: "top" },
+    holdGood: { kicker: "Step 5", title: "Log the habit", text: "Tap Hold to log that you did it. This pushes your YouInc price up.", placement: "top" },
+    scrollChart: { kicker: "Chart", title: "Scroll down", text: "Your action created chart data. Scroll down to the chart.", button: "I’m at the chart", next: "lineMode", arrows: "down", placement: "top" },
+    lineMode: { kicker: "Chart view", title: "Try Line mode", text: "You can switch between candlesticks and line mode depending on what feels clearer.", placement: "bottom" },
+    timeframes: { kicker: "Timeframes", title: "1D / 3D / 1W / 1M", text: "These change how your progress is grouped: daily, every 3 days, calendar weeks, or calendar months.", button: "OK", next: "buyOpen", placement: "bottom" },
+    buyOpen: { kicker: "Quick actions", title: "Use BUY for small wins", text: "BUY is for quick tasks like reading a page, doing push ups, tidying your room, or anything productive.", placement: "bottom" },
+    buyComplete: { kicker: "Quick action", title: "5 push ups loaded", text: "Tap Completed +25 UC to log it.", placement: "top" },
+    tapChart: { kicker: "Inspect", title: "Tap the candle or dot", text: "Tap the only candle/dot to inspect exactly what changed in this period.", placement: "bottom" },
+    scrollLogs: { kicker: "Logs", title: "Scroll down", text: "Now scroll down to the selected-period logs.", button: "Show me", next: "logsExplain", arrows: "down", placement: "top" },
+    logsExplain: { kicker: "Logs", title: "This is your evidence", text: "Here you can see logs and performance difference depending on the selected period.", button: "Next", next: "badTab", placement: "top" },
+    badTab: { kicker: "Bad habits", title: "Now track honesty", text: "Scroll up and tap Bad Habits. This is where you log patterns you want to reduce.", arrows: "up", placement: "bottom" },
+    addBad: { kicker: "Bad habit", title: "Add one", text: "Tap Add entry. The bad habit is preloaded for this tutorial.", placement: "upperRight" },
+    submitBad: { kicker: "Bad habit", title: "Add your bad habit", text: "Tap Add. No intensity step here — keep moving.", placement: "top" },
+    soldBad: { kicker: "Bad habit", title: "Log the slip", text: "Tap Sold -50. Not as punishment — as data.", placement: "top" },
+    honesty: { kicker: "Good", title: "Honesty matters most", text: "Being honest with yourself is the whole point. The chart only works if your logs are real.", button: "OK", next: "goalsTab", placement: "bottom" },
+    goalsTab: { kicker: "Goals", title: "Now add a goal", text: "Scroll up if needed, then tap Goals.", arrows: "up", placement: "bottom" },
+    addGoal: { kicker: "Goal", title: "Add a goal", text: "Tap Add entry. I loaded a simple goal for the demo.", placement: "upperRight" },
+    submitGoal: { kicker: "Goal", title: "Add the goal", text: "Tap Add to place it into Goals.", placement: "top" },
+    completeGoal: { kicker: "Goal", title: "Complete it", text: "Tap Complete +400 to see the bigger win animation.", placement: "top" },
     signup: { kicker: "YouInc", title: "Ready to track the real you?", text: "Create your account and turn this demo into your own behaviour dashboard.", button: "Create my account", next: "create" },
-    demo: { kicker: "Demo mode", title: "Play around", text: "You can keep testing the demo. Your real account is one tap away at the bottom." },
+    demo: { kicker: "Demo mode", title: "Play around", text: "You can keep testing the demo. Your real account is one tap away at the bottom.", placement: "top" },
   };
 
   const item = copy[step] ?? copy.goodTab;
@@ -2370,13 +2371,18 @@ function GuestCoach({
     );
   }
 
-  const modalSteps = ["goodText", "goodIntensity", "submitGood", "submitBad", "submitGoal"];
+  const placementClass =
+    item.placement === "top"
+      ? styles.guestCoachCardTop
+      : item.placement === "upperRight"
+      ? styles.guestCoachCardUpperRight
+      : styles.guestCoachCardBottom;
 
   return (
     <>
       {item.arrows === "down" ? <div className={styles.guestScrollArrows} aria-hidden="true">↓↓↓</div> : null}
       {item.arrows === "up" ? <div className={styles.guestScrollArrowsUp} aria-hidden="true">↑↑↑</div> : null}
-      <div className={`${styles.guestCoachCard} ${modalSteps.includes(step) ? styles.guestCoachCardTop : ""}`}>
+      <div className={`${styles.guestCoachCard} ${placementClass}`}>
         <div>
           <div className={styles.guestCoachKicker}>{item.kicker}</div>
           <div className={styles.guestCoachTitle}>{item.title}</div>
