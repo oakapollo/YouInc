@@ -5,6 +5,10 @@ export const runtime = "nodejs";
 // Legacy compatibility route. The signed-in app uses users/{uid}/store/main directly.
 // Keep this path stable until any existing single-user deployment has been migrated.
 export async function GET(req: Request) {
+  if (process.env.CAPACITOR_EXPORT === "true") {
+    return NextResponse.json({ ok: false, error: "mobile_static_bundle" }, { status: 410 });
+  }
+
   const key = req.headers.get("x-youinc-key");
   if (!process.env.YOUINC_SYNC_KEY || key !== process.env.YOUINC_SYNC_KEY) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
