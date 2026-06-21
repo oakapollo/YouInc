@@ -124,3 +124,39 @@ select {
   font-size: 14px;
   font-weight: 700;
 }
+
+.launchPage {
+  background: #000000;
+}
+
+.launchCard {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  text-align: center;
+}
+
+.launchLogo {
+  width: 104px;
+  height: 104px;
+  border-radius: 24px;
+  object-fit: cover;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(255, 255, 255, 0.08);
+}
+
+.launchSpinner {
+  width: 22px;
+  height: 22px;
+  margin: 2px 0 4px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-top-color: rgba(255, 255, 255, 0.86);
+  animation: launchSpin 0.85s linear infinite;
+}
+
+@keyframes launchSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}

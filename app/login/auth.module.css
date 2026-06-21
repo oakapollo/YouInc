@@ -15,6 +15,56 @@
   padding: 26px;
 }
 
+.launchCard {
+  width: min(420px, 100%);
+  display: grid;
+  justify-items: center;
+  gap: 18px;
+  padding: 30px 24px;
+  border-radius: 20px;
+  background: #0b0b0b;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  text-align: center;
+}
+
+.launchLogo {
+  width: 104px;
+  height: 104px;
+  border-radius: 24px;
+  object-fit: cover;
+  background: #ffffff;
+  box-shadow: 0 18px 48px rgba(255, 255, 255, 0.08);
+}
+
+.launchCopy {
+  display: grid;
+  gap: 6px;
+}
+
+.launchTitle {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+.launchText {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.launchSpinner {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-top-color: rgba(255, 255, 255, 0.88);
+  animation: spin 0.85s linear infinite;
+}
+
 .header {
   margin-bottom: 18px;
 }
@@ -128,4 +178,10 @@
 
 .link:hover {
   text-decoration: underline;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

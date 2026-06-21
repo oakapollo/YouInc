@@ -11,11 +11,13 @@ export default function Home() {
   }, [router]);
 
   return (
-    <main className="placeholderPage">
-      <div className="placeholderCard">
+    <main className="placeholderPage launchPage">
+      <div className="placeholderCard launchCard">
+        <img className="launchLogo" src="/apple-touch-icon.png" alt="YouInc" />
         <div className="placeholderKicker">YouInc</div>
-        <h1>Opening your dashboard...</h1>
-        <p>If this takes a moment, continue to the app manually.</p>
+        <h1>Opening your tracker...</h1>
+        <p>Checking your session and getting the app ready.</p>
+        <div className="launchSpinner" aria-hidden="true" />
         <a href="/YouInc">Open YouInc</a>
       </div>
     </main>

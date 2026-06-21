@@ -48,6 +48,23 @@ export default function LoginPage() {
     }
   }
 
+  if (loading || user) {
+    return (
+      <div className={styles.wrap}>
+        <div className={styles.launchCard} role="status" aria-live="polite">
+          <img className={styles.launchLogo} src="/apple-touch-icon.png" alt="YouInc" />
+          <div className={styles.launchCopy}>
+            <h1 className={styles.launchTitle}>Opening YouInc…</h1>
+            <p className={styles.launchText}>
+              Checking your account and loading your tracker.
+            </p>
+          </div>
+          <div className={styles.launchSpinner} aria-hidden="true" />
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={styles.wrap}>
       <div className={styles.card}>
