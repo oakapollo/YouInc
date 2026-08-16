@@ -1138,6 +1138,9 @@ function submitBuyActivity() {
                 <a className={styles.menuItem} href="/stats">
                   Stats
                 </a>
+                <a className={styles.menuItem} href="/savings">
+                  Savings
+                </a>
                 <a className={styles.menuItem} href="/myprofile">
                   My Profile
                 </a>
