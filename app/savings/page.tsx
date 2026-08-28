@@ -88,6 +88,7 @@ export default function SavingsPage() {
   const [hydrated, setHydrated] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [openExpenseIds, setOpenExpenseIds] = useState<string[]>([]);
 
   const uidSafe = user?.uid ?? "";
   const savingsDocRef = useMemo(() => {
@@ -151,12 +152,9 @@ export default function SavingsPage() {
   const previousMonth = store.months[previousMonthKey];
 
   const summary = useMemo(() => {
-    const totalBudget = monthData.expenses.reduce((sum, expense) => sum + expense.budget, 0);
     const totalSpent = monthData.expenses.reduce((sum, expense) => sum + expense.spent, 0);
     return {
-      totalBudget,
       totalSpent,
-      remainingBudget: totalBudget - totalSpent,
       saved: monthData.income - totalSpent,
     };
   }, [monthData]);
@@ -193,12 +191,14 @@ export default function SavingsPage() {
   }
 
   function addExpense() {
+    const id = uid();
+    setOpenExpenseIds((current) => [...current, id]);
     updateSelectedMonth((current) => ({
       ...current,
       expenses: [
         ...current.expenses,
         {
-          id: uid(),
+          id,
           name: "",
           budget: 0,
           spent: 0,
@@ -222,10 +222,18 @@ export default function SavingsPage() {
   }
 
   function deleteExpense(id: string) {
+    setOpenExpenseIds((current) => current.filter((expenseId) => expenseId !== id));
     updateSelectedMonth((current) => ({
       ...current,
       expenses: current.expenses.filter((expense) => expense.id !== id),
     }));
+  }
+
+  function toggleExpense(id: string, isOpen: boolean) {
+    setOpenExpenseIds((current) => {
+      if (isOpen) return current.includes(id) ? current : [...current, id];
+      return current.filter((expenseId) => expenseId !== id);
+    });
   }
 
   function copyPreviousMonth() {
@@ -290,10 +298,6 @@ export default function SavingsPage() {
           <strong>{money.format(monthData.income)}</strong>
         </div>
         <div className={styles.summaryTile}>
-          <span>Budgeted</span>
-          <strong>{money.format(summary.totalBudget)}</strong>
-        </div>
-        <div className={styles.summaryTile}>
           <span>Spent</span>
           <strong>{money.format(summary.totalSpent)}</strong>
         </div>
@@ -305,10 +309,7 @@ export default function SavingsPage() {
 
       <section className={styles.panel}>
         <div className={styles.panelHeader}>
-          <div>
-            <h2>{monthLabel(selectedMonth)}</h2>
-            <p>Remaining budget: {money.format(summary.remainingBudget)}</p>
-          </div>
+          <h2>{monthLabel(selectedMonth)}</h2>
           <button type="button" className={styles.primaryButton} onClick={addExpense}>
             Add expense
           </button>
@@ -331,30 +332,38 @@ export default function SavingsPage() {
           />
         </label>
 
-        <div className={styles.tableWrap}>
-          <table className={styles.expenseTable}>
-            <thead>
-              <tr>
-                <th>Expense</th>
-                <th>Budget</th>
-                <th>Spent</th>
-                <th>Done</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {monthData.expenses.length ? (
-                monthData.expenses.map((expense) => (
-                  <tr key={expense.id}>
-                    <td data-label="Expense">
+        <div className={styles.expenseList}>
+          {monthData.expenses.length ? (
+            monthData.expenses.map((expense) => {
+              const title = expense.name.trim() || "New expense";
+              return (
+                <details
+                  key={expense.id}
+                  className={styles.expenseItem}
+                  open={openExpenseIds.includes(expense.id)}
+                  onToggle={(event) => toggleExpense(expense.id, event.currentTarget.open)}
+                >
+                  <summary className={styles.expenseSummary}>
+                    <span className={styles.expenseName}>{title}</span>
+                    <span className={styles.expenseMeta}>
+                      <span>{money.format(expense.spent)} / {money.format(expense.budget)}</span>
+                      <span className={expense.paid ? styles.doneBadge : styles.openBadge}>{expense.paid ? "Done" : "Open"}</span>
+                    </span>
+                  </summary>
+
+                  <div className={styles.expenseFields}>
+                    <label>
+                      <span>Expense name</span>
                       <input
                         className={styles.nameInput}
                         value={expense.name}
                         onChange={(event) => updateExpense(expense.id, { name: event.target.value })}
                         placeholder="Rent, groceries, phone..."
                       />
-                    </td>
-                    <td data-label="Budget">
+                    </label>
+
+                    <label>
+                      <span>Budget</span>
                       <input
                         type="number"
                         min="0"
@@ -363,8 +372,10 @@ export default function SavingsPage() {
                         onChange={(event) => updateExpense(expense.id, { budget: asAmount(event.target.value) })}
                         placeholder="0"
                       />
-                    </td>
-                    <td data-label="Spent">
+                    </label>
+
+                    <label>
+                      <span>Spent</span>
                       <input
                         type="number"
                         min="0"
@@ -373,32 +384,27 @@ export default function SavingsPage() {
                         onChange={(event) => updateExpense(expense.id, { spent: asAmount(event.target.value), paid: false })}
                         placeholder="0"
                       />
-                    </td>
-                    <td data-label="Done">
-                      <label className={styles.checkboxCell}>
-                        <input
-                          type="checkbox"
-                          checked={expense.paid}
-                          onChange={(event) => updateExpense(expense.id, { paid: event.target.checked })}
-                        />
-                      </label>
-                    </td>
-                    <td>
-                      <button type="button" className={styles.deleteButton} onClick={() => deleteExpense(expense.id)} aria-label="Delete expense">
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              ) : (
-                <tr>
-                  <td colSpan={5}>
-                    <div className={styles.emptyState}>No expenses yet. Add one or copy the previous month.</div>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+                    </label>
+
+                    <label className={styles.doneField}>
+                      <input
+                        type="checkbox"
+                        checked={expense.paid}
+                        onChange={(event) => updateExpense(expense.id, { paid: event.target.checked })}
+                      />
+                      <span>Done</span>
+                    </label>
+
+                    <button type="button" className={styles.deleteButton} onClick={() => deleteExpense(expense.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </details>
+              );
+            })
+          ) : (
+            <div className={styles.emptyState}>No expenses yet. Add one or copy the previous month.</div>
+          )}
         </div>
       </section>
     </main>

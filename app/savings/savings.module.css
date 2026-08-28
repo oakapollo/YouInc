@@ -136,7 +136,7 @@
 
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -183,11 +183,6 @@
   font-size: 1.35rem;
 }
 
-.panelHeader p {
-  margin: 0;
-  color: rgba(247, 247, 242, 0.62);
-}
-
 .incomeRow {
   display: grid;
   grid-template-columns: minmax(150px, 220px) minmax(180px, 260px);
@@ -196,47 +191,141 @@
   margin-bottom: 18px;
 }
 
-.tableWrap {
-  overflow-x: auto;
+.expenseList {
+  display: grid;
+  gap: 10px;
 }
 
-.expenseTable {
+.expenseItem {
+  border: 1px solid rgba(247, 247, 242, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.055);
+  overflow: hidden;
+}
+
+.expenseSummary {
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 24px;
+  align-items: center;
+  gap: 14px;
+  padding: 0 14px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.expenseSummary::-webkit-details-marker {
+  display: none;
+}
+
+.expenseSummary::after {
+  content: "+";
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  grid-column: 3;
+  border-radius: 999px;
+  color: #9fe7cf;
+  background: rgba(159, 231, 207, 0.12);
+}
+
+.expenseItem[open] .expenseSummary::after {
+  content: "-";
+}
+
+.expenseName {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expenseMeta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: rgba(247, 247, 242, 0.72);
+  font-size: 0.92rem;
+}
+
+.doneBadge,
+.openBadge {
+  min-width: 54px;
+  padding: 5px 8px;
+  border-radius: 999px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-align: center;
+}
+
+.doneBadge {
+  color: #082016;
+  background: #9fe7cf;
+}
+
+.openBadge {
+  color: rgba(247, 247, 242, 0.7);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.expenseFields {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(2, minmax(120px, 0.75fr)) auto auto;
+  align-items: end;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.expenseFields label {
+  display: grid;
+  gap: 6px;
+}
+
+.expenseFields label span {
+  color: rgba(247, 247, 242, 0.62);
+  font-size: 0.8rem;
+}
+
+.expenseFields input {
   width: 100%;
-  border-collapse: collapse;
+  min-height: 42px;
+  border: 1px solid rgba(247, 247, 242, 0.14);
+  border-radius: 8px;
+  padding: 0 12px;
+  color: #f7f7f2;
+  background: rgba(0, 0, 0, 0.22);
+  outline: none;
 }
 
-.expenseTable th {
-  padding: 10px 8px;
-  color: rgba(247, 247, 242, 0.58);
-  font-size: 0.76rem;
-  text-align: left;
-  text-transform: uppercase;
+.expenseFields input:focus {
+  border-color: rgba(159, 231, 207, 0.72);
+  box-shadow: 0 0 0 3px rgba(159, 231, 207, 0.12);
 }
 
-.expenseTable td {
-  padding: 8px;
-  border-top: 1px solid rgba(247, 247, 242, 0.08);
+.doneField {
+  min-height: 42px;
+  grid-template-columns: auto auto;
+  align-items: center;
+  justify-content: start;
+  gap: 8px;
 }
 
-.expenseTable input {
-  width: 100%;
+.doneField input {
+  width: 20px;
+  height: 20px;
+  min-height: auto;
+  padding: 0;
+  accent-color: #9fe7cf;
+}
+
+.doneField span {
+  color: #f7f7f2;
 }
 
 .nameInput {
-  min-width: 260px;
-}
-
-.checkboxCell {
-  display: grid;
-  place-items: center;
-  width: 54px;
-}
-
-.checkboxCell input {
-  width: 22px;
-  height: 22px;
-  min-height: auto;
-  accent-color: #9fe7cf;
+  min-width: 0;
 }
 
 .deleteButton {
@@ -306,50 +395,23 @@
     grid-template-columns: 1fr;
   }
 
-  .expenseTable,
-  .expenseTable tbody,
-  .expenseTable tr,
-  .expenseTable td {
-    display: block;
+  .expenseSummary {
+    grid-template-columns: minmax(0, 1fr) auto 24px;
+    min-height: 66px;
   }
 
-  .expenseTable thead {
-    display: none;
+  .expenseMeta {
+    align-items: end;
+    flex-direction: column;
+    gap: 6px;
+    font-size: 0.86rem;
   }
 
-  .expenseTable tr {
-    padding: 12px 0;
-    border-top: 1px solid rgba(247, 247, 242, 0.1);
-  }
-
-  .expenseTable td {
-    display: grid;
-    grid-template-columns: 88px 1fr;
-    align-items: center;
-    gap: 10px;
-    border-top: 0;
-  }
-
-  .expenseTable td::before {
-    content: attr(data-label);
-    color: rgba(247, 247, 242, 0.58);
-    font-size: 0.78rem;
-  }
-
-  .expenseTable td:last-child {
+  .expenseFields {
     grid-template-columns: 1fr;
   }
 
-  .expenseTable td:last-child::before {
-    display: none;
-  }
-
-  .nameInput {
-    min-width: 0;
-  }
-
-  .checkboxCell {
-    place-items: start;
-    width: auto;
+  .doneField {
+    grid-template-columns: auto auto;
   }
 }
