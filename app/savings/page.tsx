@@ -152,10 +152,13 @@ export default function SavingsPage() {
   const previousMonth = store.months[previousMonthKey];
 
   const summary = useMemo(() => {
+    const totalBudget = monthData.expenses.reduce((sum, expense) => sum + expense.budget, 0);
     const totalSpent = monthData.expenses.reduce((sum, expense) => sum + expense.spent, 0);
     return {
+      totalBudget,
       totalSpent,
       saved: monthData.income - totalSpent,
+      projectedSavings: monthData.income - totalBudget,
     };
   }, [monthData]);
 
@@ -304,6 +307,21 @@ export default function SavingsPage() {
         <div className={styles.summaryTile}>
           <span>Saved</span>
           <strong className={summary.saved >= 0 ? styles.positive : styles.negative}>{money.format(summary.saved)}</strong>
+        </div>
+        <div className={[styles.summaryTile, styles.projectionTile].join(" ")}>
+          <span>Projections</span>
+          <div className={styles.projectionRows}>
+            <div>
+              <small>Total expenses this month</small>
+              <strong>{money.format(summary.totalBudget)}</strong>
+            </div>
+            <div>
+              <small>Projected savings</small>
+              <strong className={summary.projectedSavings >= 0 ? styles.positive : styles.negative}>
+                {money.format(summary.projectedSavings)}
+              </strong>
+            </div>
+          </div>
         </div>
       </section>
 

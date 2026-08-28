@@ -136,7 +136,7 @@
 
 .summaryGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 16px;
 }
@@ -153,6 +153,29 @@
 
 .summaryTile strong {
   font-size: clamp(1.45rem, 3vw, 2.25rem);
+}
+
+.projectionTile {
+  gap: 12px;
+}
+
+.projectionRows {
+  display: grid;
+  gap: 10px;
+}
+
+.projectionRows div {
+  display: grid;
+  gap: 3px;
+}
+
+.projectionRows small {
+  color: rgba(247, 247, 242, 0.58);
+  font-size: 0.74rem;
+}
+
+.projectionRows strong {
+  font-size: clamp(1.1rem, 2vw, 1.45rem);
 }
 
 .positive {
